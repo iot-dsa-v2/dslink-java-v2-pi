@@ -1,0 +1,31 @@
+apply plugin: 'java'
+apply plugin: 'application'
+
+mainClassName = 'org.iot.dsa.servicebus.Main'
+sourceCompatibility = 1.7
+targetCompatibility = 1.7
+version = '0.0.1-SNAPSHOT'
+
+repositories {
+    jcenter()
+    maven {
+        url 'https://oss.sonatype.org/content/repositories/snapshots/'
+    }
+    flatDir { dirs 'dsa' }
+}
+
+dependencies {
+    compile 'org.slf4j:slf4j-api:1.7.21'
+	compile ':dslink-core:+'
+	compile ':dslink-websocket-tyrus:+'
+	compile 'org.glassfish.tyrus.bundles:tyrus-standalone-client:1.13'
+	compile 'com.microsoft.azure:azure-servicebus:0.9.7'
+
+    testCompile 'junit:junit:4.12'
+}
+
+
+run {
+    args System.getProperty("exec.args", "").split()
+    workingDir project.buildDir
+}

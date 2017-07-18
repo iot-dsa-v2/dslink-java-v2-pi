@@ -1,0 +1,94 @@
+{
+  "name": "dslink-java-servicebus",
+  "version": "0.0.1",
+  "description": "Azure Service Bus DSLink",
+  "license": "ISC",
+  "author": {
+    "name": "Daniel Shapiro",
+    "email": "support@acuitybrands.com"
+  },
+  "main": "bin/dslink-java",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/IOT-DSA/dslink-java-servicebus"
+  },
+  "bugs": {
+    "url": "https://github.com/IOT-DSA/dslink-java-servicebus/issues"
+  },
+  "configs": {
+    "description1": "*************** REQUIRED CONFIGS IN ALPHABETICAL ORDER ***************",
+    "broker": {
+      "description": "URL to broker.",
+      "type": "url",
+      "value": null,
+      "required": true
+    },
+    "key": {
+      "description": "Path to public/private key pair.",
+      "type": "path",
+      "value": ".key",
+      "required": true
+    },
+    "nodes": {
+      "description": "Path to configuration database.",
+      "type": "path",
+      "value": "nodes.json",
+      "required": true
+    },
+    "rootName": {
+      "description": "Name of the root node of the link.",
+      "type": "string",
+      "value": "Service Bus",
+      "required": true
+    },
+    "rootType": {
+      "description": "Type of the root node of the link.",
+      "type": "string",
+      "value": "org.iot.dsa.node.DSNode",
+      "required": true
+    },
+    "description2": "*************** OPTIONAL CONFIGS IN ALPHABETICAL ORDER ***************",
+    "connectionType": {
+      "description": "Can be specified to override the default connection type.",
+      "type": "string",
+      "value": null,
+      "required": false
+    },
+    "log": {
+      "description": "finest, finer, fine, config, info, warning or severe",
+      "type": "string",
+      "value": "finest",
+      "required": false
+    },
+    "logFile": {
+      "description": "Path to the log file.",
+      "type": "path",
+      "value": null,
+      "required": false
+    },
+    "readTimeout": {
+      "description": "Millis timeout for reading from the connection.",
+      "type": "number",
+      "value": 60000,
+      "required": false
+    },
+    "stableDelay": {
+      "description": "Millis after the node tree is started before calling stable.",
+      "type": "number",
+      "value": 5000,
+      "required": false
+    },
+    "token": {
+      "description": "Authentication token for the broker.",
+      "type": "string",
+      "value": null,
+      "required": false
+    },
+    "transportFactory": {
+      "description": "Can be specified to override the default standalone transport.",
+      "type": "string",
+      "value": null,
+      "required": false
+    }
+  }
+}
