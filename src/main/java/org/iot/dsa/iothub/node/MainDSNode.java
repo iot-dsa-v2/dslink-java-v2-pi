@@ -1,4 +1,4 @@
-package org.iot.dsa.servicebus.node;
+package org.iot.dsa.iothub.node;
 
 import org.iot.dsa.dslink.DSResponder;
 import org.iot.dsa.dslink.responder.InboundInvokeRequest;

@@ -1,4 +1,4 @@
-package org.iot.dsa.servicebus.node;
+package org.iot.dsa.iothub.node;
 
 public interface Handler<T> {
 

@@ -1,19 +1,19 @@
 {
-  "name": "dslink-java-servicebus",
+  "name": "dslink-java-iothub",
   "version": "0.0.1",
-  "description": "Azure Service Bus DSLink",
+  "description": "Azure IoT Hub DSLink",
   "license": "ISC",
   "author": {
     "name": "Daniel Shapiro",
     "email": "support@acuitybrands.com"
   },
-  "main": "bin/dslink-java",
+  "main": "bin/dslink-java-iothub",
   "repository": {
     "type": "git",
-    "url": "https://github.com/IOT-DSA/dslink-java-servicebus"
+    "url": "https://github.com/IOT-DSA/dslink-java-iothub"
   },
   "bugs": {
-    "url": "https://github.com/IOT-DSA/dslink-java-servicebus/issues"
+    "url": "https://github.com/IOT-DSA/dslink-java-iothub/issues"
   },
   "configs": {
     "description1": "*************** REQUIRED CONFIGS IN ALPHABETICAL ORDER ***************",
@@ -38,13 +38,13 @@
     "rootName": {
       "description": "Name of the root node of the link.",
       "type": "string",
-      "value": "Service Bus",
+      "value": "IoT Hub",
       "required": true
     },
     "rootType": {
       "description": "Type of the root node of the link.",
       "type": "string",
-      "value": "org.iot.dsa.node.DSNode",
+      "value": "org.iot.dsa.iothub.Main",
       "required": true
     },
     "description2": "*************** OPTIONAL CONFIGS IN ALPHABETICAL ORDER ***************",
