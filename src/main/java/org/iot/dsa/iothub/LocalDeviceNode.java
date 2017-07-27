@@ -156,7 +156,7 @@ public class LocalDeviceNode extends RemovableNode {
 				return new ActionResult() {};
 			}
 		});
-		act.addParameter("Protocol", null, MyValueType.enumOf(IotHubNode.protocolEnum.getEnums()), null, null);
+		act.addParameter("Protocol", DSElement.make(protocol.toString()), MyValueType.enumOf(IotHubNode.protocolEnum.getEnums()), null, null);
 		addChild("Edit", act, onStart);
 	}
 	
@@ -182,12 +182,13 @@ public class LocalDeviceNode extends RemovableNode {
 		MyDSActionNode act = new MyDSActionNode(DSPermission.READ, new InvokeHandler() {
 			@Override
 			public ActionResult handle(DSMap parameters, InboundInvokeRequestHandle reqHandle) {
-				uploadFile(parameters);
-				return new ActionResult() {};
+				return uploadFile(parameters);
 			}
 		});
 		act.addParameter("Name", null, MyValueType.STRING, null, null);
 		act.addParameter("Filepath", null, MyValueType.STRING, null, "myImage.png");
+		act.setResultType(ResultType.VALUES);
+		act.addColumn("Response_Status", DSValueType.STRING);
 		addChild("Upload_File", act, onStart);
 	}
 
@@ -195,8 +196,7 @@ public class LocalDeviceNode extends RemovableNode {
 		MyDSActionNode act = new MyDSActionNode(DSPermission.READ, new InvokeHandler() {
 			@Override
 			public ActionResult handle(DSMap parameters, InboundInvokeRequestHandle reqHandle) {
-				sendD2CMessage(parameters);
-				return new ActionResult() {};
+				return sendD2CMessage(parameters);
 			}
 		});
 		act.addParameter("Message", null, MyValueType.STRING, null, null);
@@ -221,7 +221,7 @@ public class LocalDeviceNode extends RemovableNode {
 		}
 		msg.setMessageId(java.util.UUID.randomUUID().toString()); 
 		final List<DSIValue> lockobj = new ArrayList<DSIValue>();
-		client.sendEventAsync(msg, new D2CResponseCallback(), lockobj);
+		client.sendEventAsync(msg, new ResponseCallback(), lockobj);
 		
 		synchronized (lockobj) {
         	try {
@@ -245,26 +245,46 @@ public class LocalDeviceNode extends RemovableNode {
 		methodsNode.addChild(methodName, new DirectMethodNode(methodName), false);
 	}
 	
-	private void uploadFile(DSMap parameters) {
+	private ActionResult uploadFile(DSMap parameters) {
 		if (client == null) {
 			//TODO send error
 			warn("Device Client not initialized");
+			return new ActionResult() {};
 		}
 		String name = parameters.getString("Name");
 		String path = parameters.getString("Filepath");
 		File file = new File(path);
+		final List<DSIValue> lockobj = new ArrayList<DSIValue>();
 		try {
 			InputStream inputStream = new FileInputStream(file);
 			long streamLength = file.length();
-			client.uploadToBlobAsync(name, inputStream, streamLength, new FileUploadStatusCallback(), null);
+			client.uploadToBlobAsync(name, inputStream, streamLength, new ResponseCallback(), lockobj);
 		} catch (IllegalArgumentException | IOException e) {
 			// TODO send error
 			warn("Error uploading file", e);
+			return new ActionResult() {};
 		}
+		
+		synchronized (lockobj) {
+        	try {
+				lockobj.wait();
+			} catch (InterruptedException e) {
+			}
+        	if (lockobj.isEmpty()) {
+        		lockobj.add(DSString.NULL);
+        	}
+        	return new ActionValues() {
+    			@Override
+    			public Iterator<DSIValue> getValues() {
+    				return lockobj.iterator();
+    			}
+    		};
+        }
+		
 	}
 	
 	
-	private class D2CResponseCallback implements IotHubEventCallback {
+	private class ResponseCallback implements IotHubEventCallback {
 		@SuppressWarnings("unchecked")
 		@Override
 		public void execute(IotHubStatusCode responseStatus, Object context) {
@@ -318,13 +338,6 @@ public class LocalDeviceNode extends RemovableNode {
 		@Override
 		public void execute(IotHubStatusCode responseStatus, Object callbackContext) {
 			info("IoT Hub responded to device method operation with status " + responseStatus.name());
-		}
-	}
-	
-	private class FileUploadStatusCallback implements IotHubEventCallback {
-		@Override
-		public void execute(IotHubStatusCode responseStatus, Object callbackContext) {
-			info("IoT Hub responded to file upload operation with status " + responseStatus.name());
 		}
 	}
 }

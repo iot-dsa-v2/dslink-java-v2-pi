@@ -4,7 +4,7 @@ apply plugin: 'application'
 mainClassName = 'org.iot.dsa.iothub.Main'
 sourceCompatibility = 1.7
 targetCompatibility = 1.7
-version = '0.0.1-SNAPSHOT'
+version = '0.0.2-SNAPSHOT'
 
 repositories {
     jcenter()
@@ -21,7 +21,7 @@ dependencies {
 	compile ':dslink-websocket-tyrus:+'
 	compile 'org.glassfish.tyrus.bundles:tyrus-standalone-client:1.13'
 	compile 'com.microsoft.azure:azure-eventhubs:0.13.0'
-	compile 'com.microsoft.azure.sdk.iot:iot-service-client:1.3.19'
+	compile 'com.microsoft.azure.sdk.iot:iot-service-client:1.5.22'
 	compile 'com.microsoft.azure.sdk.iot:iot-device-client:1.3.30'
 
     testCompile 'junit:junit:4.12'
