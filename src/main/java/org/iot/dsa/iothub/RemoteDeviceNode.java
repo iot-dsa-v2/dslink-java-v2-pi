@@ -6,21 +6,20 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import org.iot.dsa.iothub.node.InvokeHandler;
-import org.iot.dsa.iothub.node.MyDSActionNode;
-import org.iot.dsa.iothub.node.MyDSActionNode.InboundInvokeRequestHandle;
-import org.iot.dsa.iothub.node.MyValueType;
-import org.iot.dsa.node.DSElement;
+import org.iot.dsa.dslink.DSRequestException;
+import org.iot.dsa.iothub.Util.MyValueType;
 import org.iot.dsa.node.DSIValue;
+import org.iot.dsa.node.DSInfo;
 import org.iot.dsa.node.DSInt;
 import org.iot.dsa.node.DSMap;
 import org.iot.dsa.node.DSString;
 import org.iot.dsa.node.DSValueType;
+import org.iot.dsa.node.action.ActionInvocation;
 import org.iot.dsa.node.action.ActionResult;
+import org.iot.dsa.node.action.ActionSpec;
 import org.iot.dsa.node.action.ActionValues;
+import org.iot.dsa.node.action.DSAction;
 import org.iot.dsa.node.action.ActionSpec.ResultType;
-import org.iot.dsa.security.DSPermission;
-
 import com.microsoft.azure.sdk.iot.service.DeliveryAcknowledgement;
 import com.microsoft.azure.sdk.iot.service.FeedbackBatch;
 import com.microsoft.azure.sdk.iot.service.FeedbackReceiver;
@@ -44,77 +43,84 @@ public class RemoteDeviceNode extends RemovableNode {
 	}
 	
 	@Override
-	public void onStart() {
-		super.onStart();
-		makeInvokeDirectMethodAction(true);
-		makeSendMessageAction(true);
+	protected void declareDefaults() {
+		super.declareDefaults();
+		declareDefault("Invoke_Direct_Method", makeInvokeDirectMethodAction());
+		declareDefault("Send_C2D_Message", makeSendMessageAction());
 	}
 
-	private void makeSendMessageAction(boolean onStart) {
-		MyDSActionNode act = new MyDSActionNode(DSPermission.READ, new InvokeHandler() {
+	private DSAction makeSendMessageAction() {
+		DSAction act = new DSAction() {
 			@Override
-			public ActionResult handle(DSMap parameters, InboundInvokeRequestHandle reqHandle) {
-				sendC2DMessage(parameters);
-				return new ActionResult() {};
+			public ActionResult invoke(DSInfo info, ActionInvocation invocation) {
+				((RemoteDeviceNode) info.getParent()).sendC2DMessage(invocation.getParameters());
+				return null;
 			}
-		});
-		act.addParameter("Protocol", null, MyValueType.enumOf(Arrays.asList("AMQPS", "AMQPS_WS")), null, null);
-		act.addParameter("Message", null, MyValueType.STRING, null, null);
+		};
+		act.addParameter(Util.makeParameter("Protocol", null, MyValueType.enumOf(Arrays.asList("AMQPS", "AMQPS_WS")), null, null));
+		act.addParameter("Message", DSString.NULL, null);
 //		act.setResultType(ResultType.VALUES);
 //		act.addColumn("Feedback", DSValueType.STRING);
-		addChild("Send_C2D_Message", act, onStart);
+		return act;
 	}
 
-	private void makeInvokeDirectMethodAction(boolean onStart) {
-		MyDSActionNode act = new MyDSActionNode(DSPermission.READ, new InvokeHandler() {
+	private DSAction makeInvokeDirectMethodAction() {
+		DSAction act = new DSAction() {
 			@Override
-			public ActionResult handle(DSMap parameters, InboundInvokeRequestHandle reqHandle) {
-				return invokeDirectMethod(parameters);
+			public ActionResult invoke(DSInfo info, ActionInvocation invocation) {
+				return ((RemoteDeviceNode) info.getParent()).invokeDirectMethod(info, invocation.getParameters());
 			}
-		});
-		act.addParameter("Method_Name", null, MyValueType.STRING, null, null);
-		act.addParameter("Response_Timeout", DSElement.make(30), null, "Response Timeout in Seconds", null);
-		act.addParameter("Connect_Timeout", DSElement.make(5), null, "Connect Timeout in Seconds", null);
+		};
+		act.addParameter("Method_Name", DSString.NULL, null);
+		act.addParameter("Response_Timeout", DSInt.valueOf(30), "Response Timeout in Seconds");
+		act.addParameter("Connect_Timeout", DSInt.valueOf(5), "Connect Timeout in Seconds");
 		act.setResultType(ResultType.VALUES);
-		act.addColumn("Result_Status", DSValueType.NUMBER);
-		act.addColumn("Result_Payload", DSValueType.STRING);
-		addChild("Invoke_Direct_Method", act, onStart);
+		act.addValueResult("Result_Status", DSValueType.NUMBER, null);
+		act.addValueResult("Result_Payload", DSValueType.STRING, null);
+		return act;
 	}
 	
 	
-	protected ActionResult invokeDirectMethod(DSMap parameters) {
+	protected ActionResult invokeDirectMethod(DSInfo actionInfo, DSMap parameters) {
+		final DSAction action = actionInfo.getAction();
 		String methodName = parameters.getString("Method_Name");
 		long responseTimeout = TimeUnit.SECONDS.toSeconds(parameters.getLong("Response_Timeout"));
 		long connectTimeout = TimeUnit.SECONDS.toSeconds(parameters.getLong("Connect_Timeout"));
 		DeviceMethod methodClient = hubNode.getMethodClient();
 		if (methodClient == null) {
 			warn("Method Client not initialized");
-			//TODO send error response
-			return new ActionResult() {};
+			throw new DSRequestException("Method Client not initialized");
 		}
 
 		try {
-			System.out.println("Invoke reboot direct method");
 			MethodResult result = methodClient.invoke(deviceId, methodName, responseTimeout, connectTimeout, null);
 
 			if (result == null) {
 				throw new IOException("Invoke direct method returned null");
 			}
 			Integer status = result.getStatus();
-			DSIValue v1 = status != null ? DSElement.make(status) : DSInt.NULL;
+			DSIValue v1 = status != null ? DSInt.valueOf(status) : DSInt.NULL;
 			Object payload = result.getPayload();
-			DSIValue v2 = payload != null ? DSElement.make(payload.toString()) : DSString.NULL;
+			DSIValue v2 = payload != null ? DSString.valueOf(payload.toString()) : DSString.NULL;
 			final List<DSIValue> vals = Arrays.asList(v1, v2);
 			return new ActionValues() {
 				@Override
 				public Iterator<DSIValue> getValues() {
 					return vals.iterator();
 				}
+
+				@Override
+				public ActionSpec getAction() {
+					return action;
+				}
+
+				@Override
+				public void onClose() {
+				}
 			};
 		} catch (IotHubException | IOException e) {
 			warn("Error invoking direct method: " + e);
-			//TODO send error response
-			return new ActionResult() {};
+			throw new DSRequestException(e.getMessage());
 		}
 	}
 
@@ -148,8 +154,8 @@ public class RemoteDeviceNode extends RemovableNode {
 				serviceClient.close();
 			}
 		} catch (IOException | IotHubException | InterruptedException e) {
-			// TODO send error response
 			warn("Error sending cloud-to-device message: " + e);
+			throw new DSRequestException(e.getMessage());
 		}
 	}
 

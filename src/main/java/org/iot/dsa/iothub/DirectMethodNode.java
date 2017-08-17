@@ -1,10 +1,10 @@
 package org.iot.dsa.iothub;
 
-import org.iot.dsa.iothub.node.MyDSNode;
+import org.iot.dsa.node.DSNode;
 
 import com.microsoft.azure.sdk.iot.device.DeviceTwin.DeviceMethodData;
 
-public class DirectMethodNode extends MyDSNode {
+public class DirectMethodNode extends DSNode {
 	static final int METHOD_SUCCESS = 200;
 	static final int METHOD_NOT_DEFINED = 404;
 	static final int METHOD_NOT_IMPLEMENTED = 501;

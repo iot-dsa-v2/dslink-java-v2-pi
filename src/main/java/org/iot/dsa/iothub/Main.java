@@ -2,43 +2,42 @@ package org.iot.dsa.iothub;
 
 import org.iot.dsa.dslink.DSLink;
 import org.iot.dsa.dslink.DSLinkConfig;
-import org.iot.dsa.iothub.node.InvokeHandler;
-import org.iot.dsa.iothub.node.MainDSNode;
-import org.iot.dsa.iothub.node.MyDSActionNode;
-import org.iot.dsa.iothub.node.MyDSActionNode.InboundInvokeRequestHandle;
-import org.iot.dsa.iothub.node.MyValueType;
+import org.iot.dsa.dslink.DSRootNode;
+import org.iot.dsa.node.DSInfo;
 import org.iot.dsa.node.DSMap;
+import org.iot.dsa.node.DSString;
+import org.iot.dsa.node.action.ActionInvocation;
 import org.iot.dsa.node.action.ActionResult;
-import org.iot.dsa.security.DSPermission;
+import org.iot.dsa.node.action.DSAction;
 
-public class Main extends MainDSNode {
+public class Main extends DSRootNode {
     
     private void handleAddIotHub(DSMap parameters) {
     	String name = parameters.getString("Name");
     	String connString = parameters.getString("Connection_String");
     	
     	IotHubNode hub = new IotHubNode(connString);
-    	addChild(name, hub, false);
+    	add(name, hub);
     }
 	
     @Override
-    public void onStart() {
-    	MyDSActionNode act = new MyDSActionNode(DSPermission.READ, new InvokeHandler() {
+    public void declareDefaults() {
+    	DSAction act = new DSAction() {
 			@Override
-			public ActionResult handle(DSMap parameters, InboundInvokeRequestHandle reqHandle) {
-				handleAddIotHub(parameters);
-				return new ActionResult() {};
+			 public ActionResult invoke(DSInfo info, ActionInvocation invocation) {
+				((Main) info.getParent()).handleAddIotHub(invocation.getParameters());
+				return null;
 			}
-    	});
-    	act.addParameter("Name", null, MyValueType.STRING, null, null);
-    	act.addParameter("Connection_String", null, MyValueType.STRING, null, null);
-    	addChild("Add_IoT_Hub", act, true);
+    	};
+    	act.addParameter("Name", DSString.valueOf("DanielFreeHub"), null);
+    	act.addParameter("Connection_String", DSString.valueOf("HostName=DanielFreeHub.azure-devices.net;SharedAccessKeyName=iothubowner;SharedAccessKey=mBIqQQgZsYgvJ/la4G7KkHZMBzTX4pk3HvF2aabB/LU="), null);
+    	declareDefault("Add_IoT_Hub", act);
     }
     
     public static void main(String[] args) throws Exception {
 		DSLinkConfig cfg = new DSLinkConfig(args);
         DSLink link = new DSLink(cfg);
-        link.start();
+        link.run();
 	}
 
 }

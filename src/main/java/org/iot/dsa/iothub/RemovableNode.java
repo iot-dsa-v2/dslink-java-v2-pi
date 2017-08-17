@@ -1,30 +1,31 @@
 package org.iot.dsa.iothub;
 
-import org.iot.dsa.iothub.node.InvokeHandler;
-import org.iot.dsa.iothub.node.MyDSActionNode;
-import org.iot.dsa.iothub.node.MyDSActionNode.InboundInvokeRequestHandle;
-import org.iot.dsa.iothub.node.MyDSNode;
-import org.iot.dsa.node.DSMap;
+import org.iot.dsa.node.DSInfo;
+import org.iot.dsa.node.DSNode;
+import org.iot.dsa.node.action.ActionInvocation;
 import org.iot.dsa.node.action.ActionResult;
-import org.iot.dsa.security.DSPermission;
+import org.iot.dsa.node.action.DSAction;
 
 
-public class RemovableNode extends MyDSNode {
+public class RemovableNode extends DSNode {
 	
 	@Override
-	public void onStart() {
-		makeRemoveAction(true);
+	protected void declareDefaults() {
+		declareDefault("Remove", makeRemoveAction());
 	}
 
-	protected void makeRemoveAction(boolean onStart) {
-		MyDSActionNode act = new MyDSActionNode(DSPermission.READ, new InvokeHandler() {
+	protected DSAction makeRemoveAction() {
+		return new DSAction() {
 			@Override
-			public ActionResult handle(DSMap parameters, InboundInvokeRequestHandle reqHandle) {
-				delete();
-				return new ActionResult() {};
-			}
-		});
-		addChild("Remove", act, onStart);
+			public ActionResult invoke(DSInfo info, ActionInvocation invocation) {
+		        ((RemovableNode)info.getParent()).delete();
+		        return null;
+		    }
+		};
+	}
+	
+	public void delete() {
+		getParent().remove(getName());
 	}
 	
 }

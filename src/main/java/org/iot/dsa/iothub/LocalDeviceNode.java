@@ -10,25 +10,24 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-import org.iot.dsa.iothub.node.InvokeHandler;
-import org.iot.dsa.iothub.node.MyDSActionNode;
-import org.iot.dsa.iothub.node.MyDSNode;
-import org.iot.dsa.iothub.node.MyDSValueNode;
-import org.iot.dsa.iothub.node.MyValueType;
-import org.iot.dsa.iothub.node.MyDSActionNode.InboundInvokeRequestHandle;
+import org.iot.dsa.dslink.DSRequestException;
+import org.iot.dsa.iothub.Util.MyValueType;
 import org.iot.dsa.node.DSElement;
 import org.iot.dsa.node.DSIObject;
 import org.iot.dsa.node.DSIValue;
+import org.iot.dsa.node.DSInfo;
 import org.iot.dsa.node.DSList;
 import org.iot.dsa.node.DSMap;
 import org.iot.dsa.node.DSMap.Entry;
+import org.iot.dsa.node.DSNode;
 import org.iot.dsa.node.DSString;
 import org.iot.dsa.node.DSValueType;
+import org.iot.dsa.node.action.ActionInvocation;
 import org.iot.dsa.node.action.ActionResult;
+import org.iot.dsa.node.action.ActionSpec;
 import org.iot.dsa.node.action.ActionSpec.ResultType;
 import org.iot.dsa.node.action.ActionValues;
-import org.iot.dsa.security.DSPermission;
-
+import org.iot.dsa.node.action.DSAction;
 import com.google.gson.JsonSyntaxException;
 import com.microsoft.azure.sdk.iot.device.DeviceClient;
 import com.microsoft.azure.sdk.iot.device.IotHubClientProtocol;
@@ -50,10 +49,10 @@ public class LocalDeviceNode extends RemovableNode {
 	private String deviceId;
 	private String connectionString;
 	private IotHubClientProtocol protocol;
-	private MyDSValueNode statNode;
-	private MyDSValueNode c2dNode;
+	private DSInfo status;
+	private DSInfo c2d;
 	private DSList c2dList = new DSList();
-	private MyDSNode methodsNode;
+	private DSNode methodsNode;
 
 	private DeviceClient client;
 	
@@ -67,36 +66,34 @@ public class LocalDeviceNode extends RemovableNode {
 	}
 	
 	@Override
-	public void onStart() {
-		super.onStart();
+	protected void declareDefaults() {
+		super.declareDefaults();
+		declareDefault("Methods", new DSNode());
 		
-		statNode = new MyDSValueNode();
-		statNode.setValue(DSElement.make("Connecting"));
-		addChild("STATUS", statNode, true);
+		declareDefault("Send_D2C_Message", makeSendMessageAction());
+		declareDefault("Upload_File", makeUploadFileAction());
+		declareDefault("Add_Direct_Method", makeAddMethodAction());
+		declareDefault("Refresh", makeRefreshAction());
+	}
+	
+	@Override
+	public void onStable() {		
+		status = add("STATUS", DSString.valueOf("Connecting"));
 		
 		try {
 			registerDeviceIdentity();
 		} catch (Exception e) {
 			warn("Error getting device identity", e);
-			statNode.setValue(DSElement.make("Error getting device identity: " + e.getMessage()));
+			put(status, DSString.valueOf("Error getting device identity: " + e.getMessage()));
 		}
 		
-		c2dNode = new MyDSValueNode();
-		c2dNode.setValue(c2dList);
-		addChild("Cloud-To-Device_Messages", c2dNode, true);
-		
-		methodsNode = new MyDSNode();
-		addChild("Methods", methodsNode, true);
-		
-		makeSendMessageAction(true);
-		makeUploadFileAction(true);
-		makeAddMethodAction(true);
-		
-		init(true);
-		makeRefreshAction(true);
+		c2d = add("Cloud-To-Device_Messages", DSString.valueOf(c2dList.toString()));
+		methodsNode = getNode("Methods");
+				
+		init();
 	}
 
-	private void init(boolean onStart) {
+	private void init() {
 		try {
 			this.client = new DeviceClient(connectionString, protocol);
 			MessageCallback callback = new C2DMessageCallback();
@@ -107,9 +104,9 @@ public class LocalDeviceNode extends RemovableNode {
 			client.subscribeToDeviceMethod(new DirectMethodCallback(), null, new DirectMethodStatusCallback(), null);
 		} catch (URISyntaxException | IOException e) {
 			warn("Error initializing device client", e);
-			statNode.setValue(DSElement.make("Error initializing device client: " + e.getMessage()));
+			put(status, DSString.valueOf("Error initializing device client: " + e.getMessage()));
 		}
-		makeEditAction(onStart);
+		put("Edit", makeEditAction());
 	}
 
 	private void registerDeviceIdentity() throws IOException, JsonSyntaxException, IotHubException, IllegalArgumentException, NoSuchAlgorithmException {
@@ -134,84 +131,84 @@ public class LocalDeviceNode extends RemovableNode {
 	    }
 	    String deviceKey = device.getPrimaryKey();
 	    connectionString = "HostName=" + hostName + ";DeviceId=" + deviceId + ";SharedAccessKey=" + deviceKey;
-	    statNode.setValue(DSElement.make(device.getStatus().toString()));
+	    put(status, DSString.valueOf(device.getStatus().toString()));
 	}
 	
-	private void makeRefreshAction(boolean onStart) {
-		MyDSActionNode act = new MyDSActionNode(DSPermission.READ, new InvokeHandler() {
+	private DSAction makeRefreshAction() {
+		DSAction act = new DSAction() {
 			@Override
-			public ActionResult handle(DSMap parameters, InboundInvokeRequestHandle reqHandle) {
-				init(false);
-				return new ActionResult() {};
+			public ActionResult invoke(DSInfo info, ActionInvocation invocation) {
+				((LocalDeviceNode) info.getParent()).init();
+				return null;
 			}
-		});
-		addChild("Refresh", act, onStart);
+		};
+		return act;
 	}
 	
-	private void makeEditAction(boolean onStart) {
-		MyDSActionNode act = new MyDSActionNode(DSPermission.READ, new InvokeHandler() {
+	private DSAction makeEditAction() {
+		DSAction act = new DSAction() {
 			@Override
-			public ActionResult handle(DSMap parameters, InboundInvokeRequestHandle reqHandle) {
-				edit(parameters);
-				return new ActionResult() {};
+			public ActionResult invoke(DSInfo info, ActionInvocation invocation) {
+				((LocalDeviceNode) info.getParent()).edit(invocation.getParameters());
+				return null;
 			}
-		});
-		act.addParameter("Protocol", DSElement.make(protocol.toString()), MyValueType.enumOf(IotHubNode.protocolEnum.getEnums()), null, null);
-		addChild("Edit", act, onStart);
+		};
+		act.addParameter(Util.makeParameter("Protocol", DSElement.make(protocol.toString()), MyValueType.enumOf(IotHubNode.protocolEnum.getEnums()), null, null));
+		return act;
 	}
 	
 	protected void edit(DSMap parameters) {
 		String protocolStr = parameters.getString("Protocol");
 		protocol = IotHubClientProtocol.valueOf(protocolStr);
-		init(false);
+		init();
 	}
 
-	private void makeAddMethodAction(boolean onStart) {
-		MyDSActionNode act = new MyDSActionNode(DSPermission.READ, new InvokeHandler() {
+	private DSAction makeAddMethodAction() {
+		DSAction act = new DSAction() {
 			@Override
-			public ActionResult handle(DSMap parameters, InboundInvokeRequestHandle reqHandle) {
-				addDirectMethod(parameters);
-				return new ActionResult() {};
+			public ActionResult invoke(DSInfo info, ActionInvocation invocation) {
+				((LocalDeviceNode) info.getParent()).addDirectMethod(invocation.getParameters());
+				return null;
 			}
-		});
-		act.addParameter("Method_Name", null, MyValueType.STRING, null, null);
-		addChild("Add_Direct_Method", act, onStart);
+		};
+		act.addParameter("Method_Name", DSString.NULL, null);
+		return act;
 	}
 
-	private void makeUploadFileAction(boolean onStart) {
-		MyDSActionNode act = new MyDSActionNode(DSPermission.READ, new InvokeHandler() {
+	private DSAction makeUploadFileAction() {
+		DSAction act = new DSAction() {
 			@Override
-			public ActionResult handle(DSMap parameters, InboundInvokeRequestHandle reqHandle) {
-				return uploadFile(parameters);
+			public ActionResult invoke(DSInfo info, ActionInvocation invocation) {
+				return ((LocalDeviceNode) info.getParent()).uploadFile(info, invocation.getParameters());
 			}
-		});
-		act.addParameter("Name", null, MyValueType.STRING, null, null);
-		act.addParameter("Filepath", null, MyValueType.STRING, null, "myImage.png");
+		};
+		act.addParameter("Name", DSString.NULL, null);
+		act.addParameter("Filepath", DSString.EMPTY, null).setPlaceHolder("myImage.png");
 		act.setResultType(ResultType.VALUES);
-		act.addColumn("Response_Status", DSValueType.STRING);
-		addChild("Upload_File", act, onStart);
+		act.addValueResult("Response_Status", DSValueType.STRING, null);
+		return act;
 	}
 
-	private void makeSendMessageAction(boolean onStart) {
-		MyDSActionNode act = new MyDSActionNode(DSPermission.READ, new InvokeHandler() {
+	private DSAction makeSendMessageAction() {
+		DSAction act = new DSAction() {
 			@Override
-			public ActionResult handle(DSMap parameters, InboundInvokeRequestHandle reqHandle) {
-				return sendD2CMessage(parameters);
+			public ActionResult invoke(DSInfo info, ActionInvocation invocation) {
+				return ((LocalDeviceNode) info.getParent()).sendD2CMessage(info, invocation.getParameters());
 			}
-		});
-		act.addParameter("Message", null, MyValueType.STRING, null, null);
-		act.addParameter("Properties", new DSMap(), null, null, null);
+		};
+		act.addParameter("Message", DSString.NULL, null);
+		act.addParameter("Properties", DSString.valueOf("{}"), null).setType(DSValueType.MAP);
 		act.setResultType(ResultType.VALUES);
-		act.addColumn("Response_Status", DSValueType.STRING);
-		addChild("Send_D2C_Message", act, onStart);
+		act.addValueResult("Response_Status", DSValueType.STRING, null);
+		return act;
 	}
 	
 	
-	private ActionResult sendD2CMessage(DSMap parameters) {
+	private ActionResult sendD2CMessage(DSInfo actionInfo, DSMap parameters) {
 		if (client == null) {
-			//TODO send error
-			return new ActionResult() {};
+			throw new DSRequestException("Client not initialized");
 		}
+		final DSAction action = actionInfo.getAction();
 		String msgStr = parameters.getString("Message");
 		Message msg = new Message(msgStr);
 		DSMap properties = parameters.getMap("Properties");
@@ -236,21 +233,30 @@ public class LocalDeviceNode extends RemovableNode {
     			public Iterator<DSIValue> getValues() {
     				return lockobj.iterator();
     			}
+
+				@Override
+				public ActionSpec getAction() {
+					return action;
+				}
+
+				@Override
+				public void onClose() {					
+				}
     		};
         }
 	}
 
 	private void addDirectMethod(DSMap parameters) {
 		String methodName = parameters.getString("Method_Name");
-		methodsNode.addChild(methodName, new DirectMethodNode(methodName), false);
+		methodsNode.add(methodName, new DirectMethodNode(methodName));
 	}
 	
-	private ActionResult uploadFile(DSMap parameters) {
+	private ActionResult uploadFile(DSInfo actionInfo, DSMap parameters) {
 		if (client == null) {
-			//TODO send error
 			warn("Device Client not initialized");
-			return new ActionResult() {};
+			throw new DSRequestException("Client not initialized");
 		}
+		final DSAction action = actionInfo.getAction();
 		String name = parameters.getString("Name");
 		String path = parameters.getString("Filepath");
 		File file = new File(path);
@@ -260,9 +266,8 @@ public class LocalDeviceNode extends RemovableNode {
 			long streamLength = file.length();
 			client.uploadToBlobAsync(name, inputStream, streamLength, new ResponseCallback(), lockobj);
 		} catch (IllegalArgumentException | IOException e) {
-			// TODO send error
 			warn("Error uploading file", e);
-			return new ActionResult() {};
+			throw new DSRequestException(e.getMessage());
 		}
 		
 		synchronized (lockobj) {
@@ -278,6 +283,15 @@ public class LocalDeviceNode extends RemovableNode {
     			public Iterator<DSIValue> getValues() {
     				return lockobj.iterator();
     			}
+
+				@Override
+				public ActionSpec getAction() {
+					return action;
+				}
+
+				@Override
+				public void onClose() {					
+				}
     		};
         }
 		
@@ -288,7 +302,7 @@ public class LocalDeviceNode extends RemovableNode {
 		@SuppressWarnings("unchecked")
 		@Override
 		public void execute(IotHubStatusCode responseStatus, Object context) {
-			DSIValue resp = responseStatus != null ? DSElement.make(responseStatus.toString()) : DSString.NULL;
+			DSIValue resp = responseStatus != null ? DSString.valueOf(responseStatus.toString()) : DSString.NULL;
 			if (context != null) {
 				synchronized (context) {
 					if (context instanceof List<?>) {
@@ -314,7 +328,7 @@ public class LocalDeviceNode extends RemovableNode {
 				msgMap.put(prop.getName(), prop.getValue());
 			}
 			c2dList.add(msgMap);
-			c2dNode.setValue(c2dList);
+			put(c2d, DSString.valueOf(c2dList.toString()));
 			return IotHubMessageResult.COMPLETE;
 		}
 	}

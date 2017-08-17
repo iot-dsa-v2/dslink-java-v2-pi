@@ -8,23 +8,23 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.function.Consumer;
 
-import org.iot.dsa.iothub.node.InvokeHandler;
-import org.iot.dsa.iothub.node.MyColumn;
-import org.iot.dsa.iothub.node.MyDSActionNode;
-import org.iot.dsa.iothub.node.MyDSNode;
-import org.iot.dsa.iothub.node.MyValueType;
-import org.iot.dsa.iothub.node.MyDSActionNode.InboundInvokeRequestHandle;
-import org.iot.dsa.node.DSElement;
+import org.iot.dsa.dslink.DSRequestException;
+import org.iot.dsa.iothub.Util.MyValueType;
+import org.iot.dsa.iothub.Util.MyColumn;
 import org.iot.dsa.node.DSEnum;
+import org.iot.dsa.node.DSInfo;
 import org.iot.dsa.node.DSList;
 import org.iot.dsa.node.DSMap;
+import org.iot.dsa.node.DSNode;
+import org.iot.dsa.node.DSString;
 import org.iot.dsa.node.DSValueType;
+import org.iot.dsa.node.action.ActionInvocation;
 import org.iot.dsa.node.action.ActionResult;
 import org.iot.dsa.node.action.ActionResultSpec;
+import org.iot.dsa.node.action.ActionSpec;
 import org.iot.dsa.node.action.ActionSpec.ResultType;
 import org.iot.dsa.node.action.ActionTable;
-import org.iot.dsa.security.DSPermission;
-
+import org.iot.dsa.node.action.DSAction;
 import com.microsoft.azure.eventhubs.EventData;
 import com.microsoft.azure.eventhubs.EventHubClient;
 import com.microsoft.azure.eventhubs.PartitionReceiver;
@@ -38,8 +38,8 @@ public class IotHubNode extends RemovableNode {
 	
 	private String connectionString;
 	
-	private MyDSNode localNode;
-	private MyDSNode remoteNode;
+	private DSNode localNode;
+	private DSNode remoteNode;
 
 	private DeviceMethod methodClient;
 	
@@ -61,25 +61,28 @@ public class IotHubNode extends RemovableNode {
 		}
 		return methodClient;
 	}
+	
+	@Override
+	protected void declareDefaults() {
+		super.declareDefaults();
+		declareDefault("Local", new DSNode());
+		declareDefault("Remote", new DSNode());
+		
+		declareDefault("Add_Remote_Device", makeAddDeviceAction());
+		declareDefault("Read_Messages", makeReadMessagesAction());
+		declareDefault("Create_Local_Device", makeCreateDeviceAction());
+	}
 
 	@Override
-	public void onStart() {
-		super.onStart();
-		localNode = new MyDSNode();
-		addChild("Local", localNode, true);
-		
-		remoteNode = new MyDSNode();
-		addChild("Remote", remoteNode, true);
-		
-		makeAddDeviceAction(true);
-		makeReadMessagesAction(true);
-		makeCreateDeviceAction(true);
-		init(true);
+	public void onStable() {
+		localNode = getNode("Local");
+		remoteNode = getNode("Remote");
+		init();
 	}
 	
-	private void init(boolean onStart) {
+	private void init() {
 		createMethodClient();
-		makeEditAction(onStart);
+		put("Edit", makeEditAction());
 	}
 	
 	private void createMethodClient() {
@@ -90,76 +93,78 @@ public class IotHubNode extends RemovableNode {
 		}
 	}
 	
-	private void makeEditAction(boolean onStart) {
-		MyDSActionNode act = new MyDSActionNode(DSPermission.READ, new InvokeHandler() {
+	private DSAction makeEditAction() {
+		DSAction act = new DSAction() {
 			@Override
-			public ActionResult handle(DSMap parameters, InboundInvokeRequestHandle reqHandle) {
-				edit(parameters);
-				return new ActionResult() {};
+			 public ActionResult invoke(DSInfo info, ActionInvocation invocation) {
+				((IotHubNode) info.getParent()).edit(invocation.getParameters());
+				return null;
 			}
-		});
-		act.addParameter("Connection_String", DSElement.make(connectionString), MyValueType.STRING, null, null);
-		addChild("Edit", act, onStart);
+		};
+		act.addParameter("Connection_String", DSString.valueOf(connectionString), null);
+		return act;
 	}
 
-	private void makeCreateDeviceAction(boolean onStart) {
-		MyDSActionNode act = new MyDSActionNode(DSPermission.READ, new InvokeHandler() {
+	private DSAction makeCreateDeviceAction() {
+		DSAction act = new DSAction() {
 			@Override
-			public ActionResult handle(DSMap parameters, InboundInvokeRequestHandle reqHandle) {
-				createDevice(parameters);
-				return new ActionResult() {};
+			 public ActionResult invoke(DSInfo info, ActionInvocation invocation) {
+				((IotHubNode) info.getParent()).createDevice(invocation.getParameters());
+				return null;
 			}
-		});
-		act.addParameter("Device_ID", null, MyValueType.STRING, null, null);
-		act.addParameter("Protocol", null, MyValueType.enumOf(protocolEnum.getEnums()), null, null);
-		addChild("Create_Local_Device", act, onStart);
+		};
+		act.addParameter("Device_ID", DSString.NULL, null);
+		act.addParameter(Util.makeParameter("Protocol", null, MyValueType.enumOf(protocolEnum.getEnums()), null, null));
+		return act;
 	}
 
-	private void makeReadMessagesAction(boolean onStart) {
-		MyDSActionNode act = new MyDSActionNode(DSPermission.READ, new InvokeHandler() {
+	private DSAction makeReadMessagesAction() {
+		DSAction act = new DSAction() {
 			@Override
-			public ActionResult handle(DSMap parameters, InboundInvokeRequestHandle reqHandle) {
-				return readMessages(parameters, reqHandle);
+			 public ActionResult invoke(DSInfo info, ActionInvocation invocation) {
+				return ((IotHubNode) info.getParent()).readMessages(info, invocation);
 			}
-		});
-		act.addParameter("EventHub_Compatible_Name", null, MyValueType.STRING, null, null);
-		act.addParameter("EventHub_Compatible_Endpoint", null, MyValueType.STRING, null, null);
-		act.addParameter("Partition_ID", null, MyValueType.STRING, null, null);
+		};
+		act.addParameter("EventHub_Compatible_Name", DSString.valueOf("iothub-ehub-danielfree-172452-a48c3b34bf"), null);
+		act.addParameter("EventHub_Compatible_Endpoint", DSString.valueOf("Endpoint=sb://ihsuprodbyres053dednamespace.servicebus.windows.net/;SharedAccessKeyName=iothubowner;SharedAccessKey=mBIqQQgZsYgvJ/la4G7KkHZMBzTX4pk3HvF2aabB/LU="), null);
+		act.addParameter("Partition_ID", DSString.EMPTY, null).setPlaceHolder("0");
 		act.setResultType(ResultType.STREAM_TABLE);
-		addChild("Read_Messages", act, onStart);
+		return act;
 	}
 
-	private void makeAddDeviceAction(boolean onStart) {
-		MyDSActionNode act = new MyDSActionNode(DSPermission.READ, new InvokeHandler() {
+	private DSAction makeAddDeviceAction() {
+		DSAction act = new DSAction() {
 			@Override
-			public ActionResult handle(DSMap parameters, InboundInvokeRequestHandle reqHandle) {
-				addDevice(parameters);
-				return new ActionResult() {};
+			 public ActionResult invoke(DSInfo info, ActionInvocation invocation) {
+				((IotHubNode) info.getParent()).addDevice(invocation.getParameters());
+				return null;
 			}
-		});
-		act.addParameter("Device_ID", null, MyValueType.STRING, null, null);
-		addChild("Add_Remote_Device", act, onStart);
+		};
+		act.addParameter("Device_ID", DSString.NULL, null);
+		return act;
 	}
 	
 	
 	private void edit(DSMap parameters) {
 		connectionString = parameters.getString("Connection_String");
-		init(false);
+		init();
 	}
 	
 	private void addDevice(DSMap parameters) {
 		String id = parameters.getString("Device_ID");
-		remoteNode.addChild(id, new RemoteDeviceNode(this, id), false);
+		remoteNode.add(id, new RemoteDeviceNode(this, id));
 	}
 	
 	private void createDevice(DSMap parameters) {
 		String id = parameters.getString("Device_ID");
 		String protocolStr = parameters.getString("Protocol");
 		IotHubClientProtocol protocol = IotHubClientProtocol.valueOf(protocolStr);
-		localNode.addChild(id, new LocalDeviceNode(this, id, protocol), false);
+		localNode.add(id, new LocalDeviceNode(this, id, protocol));
 	}
 	
-	private ActionResult readMessages(DSMap parameters, InboundInvokeRequestHandle reqHandle) {
+	private ActionResult readMessages(DSInfo actionInfo, ActionInvocation invocation) {
+		final DSAction action = actionInfo.getAction();
+		DSMap parameters = invocation.getParameters();
 		String name = parameters.getString("EventHub_Compatible_Name");
 		String endpt = parameters.getString("EventHub_Compatible_Endpoint");
 		String connStr = endpt + ";EntityPath=" + name;
@@ -168,10 +173,10 @@ public class IotHubNode extends RemovableNode {
 		EventHubClient client = null;
 		try {
 			client = EventHubClient.createFromConnectionStringSync(connStr);
-			receiveMessages(client, partitionId, reqHandle);
+			receiveMessages(client, partitionId, invocation);
 		} catch(Exception e) {
 			warn("Failed to create receiver: " + e.getMessage());
-			//TODO send error response
+			throw new  DSRequestException(e.getMessage());
 		}
 		
 		return new ActionTable() {
@@ -195,16 +200,25 @@ public class IotHubNode extends RemovableNode {
 				}
 				return cols.iterator();
 			}
+
+			@Override
+			public ActionSpec getAction() {
+				return action;
+			}
+
+			@Override
+			public void onClose() {
+			}
 		};
 	}
 
 	private void receiveMessages(final EventHubClient client, final String partitionId,
-			final InboundInvokeRequestHandle reqHandle) throws ServiceBusException {
+			final ActionInvocation invocation) throws ServiceBusException {
 		client.createReceiver(EventHubClient.DEFAULT_CONSUMER_GROUP_NAME, partitionId, Instant.now())
 				.thenAccept(new Consumer<PartitionReceiver>() {
 					public void accept(PartitionReceiver receiver) {
 						try {
-							while (!reqHandle.isClosed()) {
+							while (invocation.isOpen()) {
 								Iterable<EventData> receivedEvents = receiver.receive(100).get();
 								if (receivedEvents != null) {
 									for (EventData receivedEvent : receivedEvents) {
@@ -216,13 +230,13 @@ public class IotHubNode extends RemovableNode {
 										DSList row = new DSList().add(offset).add(seqNo).add(enqTime.toString());
 										row.add(deviceId != null ? deviceId.toString() : null);
 										row.add(payload);
-										reqHandle.send(row);
+										invocation.send(row);
 									}
 								}
 							}
 						} catch (Exception e) {
 							warn("Failed to receive messages: " + e.getMessage());
-							//TODO send error update?
+							invocation.close(new DSRequestException(e.getMessage()));
 						} finally {
 							try {
 								client.closeSync();
