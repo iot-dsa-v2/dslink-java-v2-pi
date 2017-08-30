@@ -12,6 +12,7 @@ import org.iot.dsa.node.DSIValue;
 import org.iot.dsa.node.DSInfo;
 import org.iot.dsa.node.DSInt;
 import org.iot.dsa.node.DSMap;
+import org.iot.dsa.node.DSNode;
 import org.iot.dsa.node.DSString;
 import org.iot.dsa.node.DSValueType;
 import org.iot.dsa.node.action.ActionInvocation;
@@ -49,6 +50,19 @@ public class RemoteDeviceNode extends RemovableNode {
 		declareDefault("Send_C2D_Message", makeSendMessageAction());
 	}
 
+	@Override
+	protected void onStable() {
+		if (hubNode == null) {
+			DSNode n = getParent().getParent();
+			if (n instanceof IotHubNode) {
+				hubNode = (IotHubNode) n;
+			}
+		}
+		if (deviceId == null) {
+			deviceId = getName();
+		}
+	}
+	
 	private DSAction makeSendMessageAction() {
 		DSAction act = new DSAction() {
 			@Override
@@ -74,6 +88,7 @@ public class RemoteDeviceNode extends RemovableNode {
 		act.addParameter("Method_Name", DSString.NULL, null);
 		act.addParameter("Response_Timeout", DSInt.valueOf(30), "Response Timeout in Seconds");
 		act.addParameter("Connect_Timeout", DSInt.valueOf(5), "Connect Timeout in Seconds");
+		act.addParameter("Payload", DSString.EMPTY, "Payload of direct method invocation");
 		act.setResultType(ResultType.VALUES);
 		act.addValueResult("Result_Status", DSValueType.NUMBER, null);
 		act.addValueResult("Result_Payload", DSValueType.STRING, null);
@@ -86,6 +101,7 @@ public class RemoteDeviceNode extends RemovableNode {
 		String methodName = parameters.getString("Method_Name");
 		long responseTimeout = TimeUnit.SECONDS.toSeconds(parameters.getLong("Response_Timeout"));
 		long connectTimeout = TimeUnit.SECONDS.toSeconds(parameters.getLong("Connect_Timeout"));
+		String invPayload = parameters.getString("Payload");
 		DeviceMethod methodClient = hubNode.getMethodClient();
 		if (methodClient == null) {
 			warn("Method Client not initialized");
@@ -93,7 +109,7 @@ public class RemoteDeviceNode extends RemovableNode {
 		}
 
 		try {
-			MethodResult result = methodClient.invoke(deviceId, methodName, responseTimeout, connectTimeout, null);
+			MethodResult result = methodClient.invoke(deviceId, methodName, responseTimeout, connectTimeout, invPayload);
 
 			if (result == null) {
 				throw new IOException("Invoke direct method returned null");

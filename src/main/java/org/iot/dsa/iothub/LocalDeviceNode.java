@@ -77,8 +77,28 @@ public class LocalDeviceNode extends RemovableNode {
 	}
 	
 	@Override
-	public void onStable() {		
+	protected void onStarted() {
+		if (protocol == null) {
+			DSIObject p = get("Protocol");
+			protocol = p instanceof DSString ? IotHubClientProtocol.valueOf(p.toString()) : IotHubClientProtocol.MQTT;
+		}
+	}
+	
+	@Override
+	protected void onStable() {		
 		status = add("STATUS", DSString.valueOf("Connecting"));
+		status.setTransient(true);
+		
+		if (hubNode == null) {
+			DSNode n = getParent();
+			n = n.getParent();
+			if (n instanceof IotHubNode) {
+				hubNode = (IotHubNode) n;
+			}
+		}
+		if (deviceId == null) {
+			deviceId = getName();
+		}
 		
 		try {
 			registerDeviceIdentity();
@@ -88,12 +108,14 @@ public class LocalDeviceNode extends RemovableNode {
 		}
 		
 		c2d = add("Cloud-To-Device_Messages", DSString.valueOf(c2dList.toString()));
+		c2d.setTransient(true);
 		methodsNode = getNode("Methods");
 				
 		init();
 	}
 
 	private void init() {
+		put("Protocol", DSString.valueOf(protocol.toString())).setReadOnly(true);
 		try {
 			this.client = new DeviceClient(connectionString, protocol);
 			MessageCallback callback = new C2DMessageCallback();
@@ -106,7 +128,7 @@ public class LocalDeviceNode extends RemovableNode {
 			warn("Error initializing device client", e);
 			put(status, DSString.valueOf("Error initializing device client: " + e.getMessage()));
 		}
-		put("Edit", makeEditAction());
+		put("Edit", makeEditAction()).setTransient(true);
 	}
 
 	private void registerDeviceIdentity() throws IOException, JsonSyntaxException, IotHubException, IllegalArgumentException, NoSuchAlgorithmException {
@@ -172,6 +194,7 @@ public class LocalDeviceNode extends RemovableNode {
 			}
 		};
 		act.addParameter("Method_Name", DSString.NULL, null);
+		act.addParameter("Path", DSString.EMPTY, null);
 		return act;
 	}
 
@@ -248,7 +271,8 @@ public class LocalDeviceNode extends RemovableNode {
 
 	private void addDirectMethod(DSMap parameters) {
 		String methodName = parameters.getString("Method_Name");
-		methodsNode.add(methodName, new DirectMethodNode(methodName));
+		String path = parameters.getString("Path");
+		methodsNode.add(methodName, new DirectMethodNode(methodName, path));
 	}
 	
 	private ActionResult uploadFile(DSInfo actionInfo, DSMap parameters) {

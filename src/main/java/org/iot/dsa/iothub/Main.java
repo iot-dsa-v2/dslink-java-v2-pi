@@ -2,6 +2,8 @@ package org.iot.dsa.iothub;
 
 import org.iot.dsa.dslink.DSLink;
 import org.iot.dsa.dslink.DSLinkConfig;
+import org.iot.dsa.dslink.DSRequester;
+import org.iot.dsa.dslink.DSRequesterInterface;
 import org.iot.dsa.dslink.DSRootNode;
 import org.iot.dsa.node.DSInfo;
 import org.iot.dsa.node.DSMap;
@@ -10,7 +12,9 @@ import org.iot.dsa.node.action.ActionInvocation;
 import org.iot.dsa.node.action.ActionResult;
 import org.iot.dsa.node.action.DSAction;
 
-public class Main extends DSRootNode {
+public class Main extends DSRootNode implements DSRequester {
+	
+	private static DSRequesterInterface session;
     
     private void handleAddIotHub(DSMap parameters) {
     	String name = parameters.getString("Name");
@@ -21,7 +25,7 @@ public class Main extends DSRootNode {
     }
 	
     @Override
-    public void declareDefaults() {
+    protected void declareDefaults() {
     	DSAction act = new DSAction() {
 			@Override
 			 public ActionResult invoke(DSInfo info, ActionInvocation invocation) {
@@ -38,6 +42,19 @@ public class Main extends DSRootNode {
 		DSLinkConfig cfg = new DSLinkConfig(args);
         DSLink link = new DSLink(cfg);
         link.run();
+	}
+    
+    public static DSRequesterInterface getRequesterSession() {
+    	return session;
+    }
+
+	@Override
+	public void onConnected(DSRequesterInterface session) {
+		Main.session = session;
+	}
+
+	@Override
+	public void onDisconnected(DSRequesterInterface session) {
 	}
 
 }

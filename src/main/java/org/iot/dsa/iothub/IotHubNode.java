@@ -12,6 +12,7 @@ import org.iot.dsa.dslink.DSRequestException;
 import org.iot.dsa.iothub.Util.MyValueType;
 import org.iot.dsa.iothub.Util.MyColumn;
 import org.iot.dsa.node.DSEnum;
+import org.iot.dsa.node.DSIObject;
 import org.iot.dsa.node.DSInfo;
 import org.iot.dsa.node.DSList;
 import org.iot.dsa.node.DSMap;
@@ -74,15 +75,24 @@ public class IotHubNode extends RemovableNode {
 	}
 
 	@Override
-	public void onStable() {
+	protected void onStarted() {
+		if (connectionString == null) {
+			DSIObject cs = get("Connection_String");
+			connectionString = cs instanceof DSString ? ((DSString) cs).toString() : "";
+		}
+	}
+	
+	@Override
+	protected void onStable() {
 		localNode = getNode("Local");
 		remoteNode = getNode("Remote");
 		init();
 	}
 	
 	private void init() {
+		put("Connection_String", DSString.valueOf(connectionString)).setReadOnly(true);
 		createMethodClient();
-		put("Edit", makeEditAction());
+		put("Edit", makeEditAction()).setTransient(true);
 	}
 	
 	private void createMethodClient() {
