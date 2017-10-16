@@ -1,4 +1,4 @@
-package org.iot.dsa.iothub;
+package org.iot.dsa.pi.node;
 
 import org.iot.dsa.node.DSInfo;
 import org.iot.dsa.node.DSNode;
