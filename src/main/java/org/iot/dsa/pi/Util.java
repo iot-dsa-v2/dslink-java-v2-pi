@@ -4,6 +4,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.iot.dsa.io.json.JsonReader;
+import org.iot.dsa.node.DSElement;
+import org.iot.dsa.node.DSList;
 import org.iot.dsa.node.DSMap;
 import org.iot.dsa.node.DSMap.Entry;
 import org.iot.dsa.node.DSMetadata;
@@ -34,5 +36,24 @@ public class Util {
 		DSMap m = reader.getMap();
 		reader.close();
 		return m;
+	}
+	
+	public static Object dsElementToObject(DSElement element) {
+	    if (element.isBoolean()) {
+	        return element.toBoolean();
+	    } else if (element.isNumber()) {
+	        return element.toInt();
+	    } else if (element.isList()) {
+	        DSList dsl = element.toList();
+	        String[] arr = new String[dsl.size()];
+	        int i = 0;
+	        for (DSElement e: dsl) {
+	            arr[i] = e.toString();
+	            i++;
+	        }
+	        return arr;
+	    } else {
+	        return element.toString();
+	    }
 	}
 }
