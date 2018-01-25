@@ -700,7 +700,7 @@ public class WebApiMethod {
         method.addParameter(new UrlParameter("selectedFields", String.class, "List of fields to be returned in the response, separated by semicolons (;). If this parameter is not specified, all available fields will be returned..", false));
         methods.insert(method);
 
-        method = new WebApiMethod("/dataservers#path", "GET", "getByPath", "Retrieve a Data Server by path.");
+        method = new WebApiMethod("/dataservers", "GET", "getByPath", "Retrieve a Data Server by path.");
         method.addParameter(new UrlParameter("path", String.class, "The path to the server. Note that the path supplied to this method must be of the form '\\servername'..", true));
         method.addParameter(new UrlParameter("selectedFields", String.class, "List of fields to be returned in the response, separated by semicolons (;). If this parameter is not specified, all available fields will be returned..", false));
         methods.insert(method);
@@ -709,7 +709,7 @@ public class WebApiMethod {
         method.setBodyParameter("enumerationSet", "The new enumeration set definition..");
         methods.insert(method);
 
-        method = new WebApiMethod("/dataservers#name", "GET", "getByName", "Retrieve a Data Server by name.");
+        method = new WebApiMethod("/dataservers", "GET", "getByName", "Retrieve a Data Server by name.");
         method.addParameter(new UrlParameter("name", String.class, "The name of the server..", true));
         method.addParameter(new UrlParameter("selectedFields", String.class, "List of fields to be returned in the response, separated by semicolons (;). If this parameter is not specified, all available fields will be returned..", false));
         methods.insert(method);
@@ -1908,7 +1908,7 @@ public class WebApiMethod {
         method.addParameter(new UrlParameter("selectedFields", String.class, "List of fields to be returned in the response, separated by semicolons (;). If this parameter is not specified, all available fields will be returned..", false));
         methods.insert(method);
 
-        method = new WebApiMethod("/assetservers#path", "GET", "getByPath", "Retrieve an Asset Server by path.");
+        method = new WebApiMethod("/assetservers", "GET", "getByPath", "Retrieve an Asset Server by path.");
         method.addParameter(new UrlParameter("path", String.class, "The path to the server..", true));
         method.addParameter(new UrlParameter("selectedFields", String.class, "List of fields to be returned in the response, separated by semicolons (;). If this parameter is not specified, all available fields will be returned..", false));
         methods.insert(method);
@@ -1927,7 +1927,7 @@ public class WebApiMethod {
         method.addParameter(new UrlParameter("selectedFields", String.class, "List of fields to be returned in the response, separated by semicolons (;). If this parameter is not specified, all available fields will be returned..", false));
         methods.insert(method);
 
-        method = new WebApiMethod("/assetservers/{webId}/securityidentities#userIdentity", "GET", "getSecurityIdentitiesForUser", "Retrieve security identities for a specific user.");
+        method = new WebApiMethod("/assetservers/{webId}/securityidentities", "GET", "getSecurityIdentitiesForUser", "Retrieve security identities for a specific user.");
         method.addParameter(new UrlParameter("userIdentity", String.class, "The user identity to search for..", true));
         method.addParameter(new UrlParameter("selectedFields", String.class, "List of fields to be returned in the response, separated by semicolons (;). If this parameter is not specified, all available fields will be returned..", false));
         methods.insert(method);
@@ -1954,7 +1954,7 @@ public class WebApiMethod {
         method.addParameter(new UrlParameter("securityItem", String.class, "The security item of the desired security entries to be deleted. If the parameter is not specified, security entries of the 'Default' security item will be deleted..", false));
         methods.insert(method);
 
-        method = new WebApiMethod("/assetservers#name", "GET", "getByName", "Retrieve an Asset Server by name.");
+        method = new WebApiMethod("/assetservers", "GET", "getByName", "Retrieve an Asset Server by name.");
         method.addParameter(new UrlParameter("name", String.class, "The name of the server..", true));
         method.addParameter(new UrlParameter("selectedFields", String.class, "List of fields to be returned in the response, separated by semicolons (;). If this parameter is not specified, all available fields will be returned..", false));
         methods.insert(method);
@@ -2112,6 +2112,61 @@ public class WebApiMethod {
         method.addParameter(new UrlParameter("sortOrder", String.class, "The order that the returned collection is sorted. The default is 'Ascending'..", false));
         method.addParameter(new UrlParameter("time", List.class, "A list of timestamps at which to calculate the expression..", false));
         method.addParameter(new UrlParameter("webId", String.class, "The ID of the target object of the expression. A target object can be a Data Server, a database, an element, an event frame or an attribute. References to attributes or points are based on the target. If this parameter is not provided, the target object is set to null..", false));
+        methods.insert(method);
+        
+        method = new WebApiMethod("/search/children", "GET", "getChildren", "Get child elements in a hierarchy.");
+        method.addParameter(new UrlParameter("parent", String.class, "Parent element or database in the hierarchy. AF element is specified as af:\\\\server\\database\\element.", true));
+        method.addParameter(new UrlParameter("fields", List.class, "List of fields to include in each Search Result. If no fields are specified, then the following fields are returned: afcategories; attributes; datatype; description; endtime; haschildren; itemtype; links; matchedfields; name; plottable; starttime; template; uniqueid; uom; webid. The following fields are not returned by default: paths; parents; explain (must be paired with the links field)", false));
+        method.addParameter(new UrlParameter("count", Integer.class, "Max count of child objects to return (optional). Defaults to 10.", false));
+        method.addParameter(new UrlParameter("start", Integer.class, "Starting result for this result set. Note that the first result is at position 0.", false));
+        methods.insert(method);
+        
+        method = new WebApiMethod("/search/sources", "DELETE", "deleteSource", "Delete a database that has been previously indexed by the search service.");
+        method.addParameter(new UrlParameter("name", String.class, "The name of the search source to delete, in the form of pi:piservername or af:\\\\afservername\\afdatabasename.", true));
+        methods.insert(method);
+        
+        method = new WebApiMethod("/search/settings", "POST", "editSetting", "Edit settings. Note: This overwrites the previous setting, it does not append to it.");
+        method.addParameter(new UrlParameter("scaninterval", Integer.class, "Scan Interval in seconds", true));
+        method.addParameter(new UrlParameter("pointattributes", String.class, "'|' delimited point attributes", true));
+        methods.insert(method);
+        
+        method = new WebApiMethod("/search/sources/crawl", "POST", "fullCrawl", "Initiate a full crawl of a source database with the supplied name.");
+        method.addParameter(new UrlParameter("name", String.class, "The name of a search source to crawl, in the form of: pi:piservername or af:\\\\afservername\\afdatabasename. Otherwise a full crawl of all sources is triggered.", true));
+        methods.insert(method);
+        
+        method = new WebApiMethod("/search/settings", "GET", "getSettings", "Get the crawler settings for the search service.");
+        methods.insert(method);
+        
+        method = new WebApiMethod("/search/sources", "GET", "getSources", "Get a list of databases indexed by the search service.");
+        method.addParameter(new UrlParameter("name", String.class, "JSON object with Name of the source, in the form of pi:piservername or af:\\\\afservername\\afdatabasename as well as CrawlerHost, the hostname where the crawler service is running. Defaults to the same machine as the search service.", false));
+        methods.insert(method);
+        
+        method = new WebApiMethod("/search/version", "GET", "getVersion", "Get the version of the PI Web API Indexed Search service");
+        methods.insert(method);
+        
+        method = new WebApiMethod("/search/serviceinfo", "GET", "getIndexInfo", "Get indexing information for current indexed sources of the PI Web API Indexed Search service.");
+        methods.insert(method);
+        
+        method = new WebApiMethod("/search", "GET", "getLinks", "Get top level links for the PI Web API Indexed Search service.");
+        methods.insert(method);
+        
+        method = new WebApiMethod("/search/metrics", "GET", "getMetrics", "Get query metrics for the PI Web API Indexed Search Service.");
+        methods.insert(method);
+        
+        method = new WebApiMethod("/search/query", "GET", "query", "Query the crawled data by keyword(s).");
+        method.addParameter(new UrlParameter("q", List.class, "One or many terms, in the form of field:value, like \"name:pump\". If no field is specfied, like \"pump\", then the following fields will all be used: name, description, afcategories, afelementtemplate, attributename, attributedescription. The star and question mark wildcards are supported, for example: boil* or boi?er. To perform a fuzzy search, append a tilde to the end of a keyword, like \"boilr~\" will match \"boiler\". If multiple terms are entered, they are assumed to be ORed together. If that's not appropriate, you can specify AND, OR, and NOT operators, along with parenthesis to create a complex query. For example \"(vibration* AND datatype:float32) OR afelementtemplate:pump\" Special characters are used through the keyword syntax, so those characters must be escaped if they are in a literal search term. The following characters must be escaped with a backslash: + - && || ! ( ) { } [ ] ^ \" ~ * ? : \\ For example, to find a PI point named SI:NUSO.ID specify \"q=name:SI\\:USO.ID\"", false));
+        method.addParameter(new UrlParameter("scope", List.class, "List of sources to execute the query against. Specify the sources in string format (e.g. pi:mypidataarchive) or in webId format. Multiple scopes (and with different formats) can be specified, separated by semicolons (;).", false));
+        method.addParameter(new UrlParameter("fields", List.class, "List of fields to include in each Search Result. If no fields are specified, then the following fields are returned: afcategory; attributes; datatype; description; endtime; haschildren; itemtype; links; matchedfields; name; plottable; starttime; template; uniqueid; uom; webid. The following fields are not returned by default: paths; parents; explain (must be paired with the links field)", false));
+        method.addParameter(new UrlParameter("count", Integer.class, "Max number of results to return. The default is 10 per page.", false));
+        method.addParameter(new UrlParameter("start", Integer.class, "Index of search result to begin with. The default is to start at index 0.", false));
+        methods.insert(method);
+        
+        method = new WebApiMethod("/search/sources", "POST", "createSource", "Create a new search source");
+        method.setBodyParameter("source", "JSON object with Name of the source, in the form of pi:piservername or af:\\\\afservername\\afdatabasename as well as CrawlerHost, the hostname where the crawler service is running. Defaults to the same machine as the search service.");
+        methods.insert(method);
+        
+        method = new WebApiMethod("/search/sources", "PUT", "updateSource", "Edit a search source");
+        method.setBodyParameter("source", "The updated search source object");
         methods.insert(method);
     }
 

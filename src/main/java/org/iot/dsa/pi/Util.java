@@ -4,11 +4,14 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.iot.dsa.io.json.JsonReader;
+import org.iot.dsa.node.DSBool;
 import org.iot.dsa.node.DSElement;
+import org.iot.dsa.node.DSIObject;
 import org.iot.dsa.node.DSList;
 import org.iot.dsa.node.DSMap;
 import org.iot.dsa.node.DSMap.Entry;
 import org.iot.dsa.node.DSMetadata;
+import org.iot.dsa.node.DSNode;
 import org.iot.dsa.node.DSValueType;
 
 
@@ -55,5 +58,10 @@ public class Util {
 	    } else {
 	        return element.toString();
 	    }
+	}
+	
+	public static boolean getBool(DSNode n, String key) {
+	    DSIObject obj = n.get(key);
+	    return obj instanceof DSBool ? ((DSBool) obj).toBoolean() : false;
 	}
 }

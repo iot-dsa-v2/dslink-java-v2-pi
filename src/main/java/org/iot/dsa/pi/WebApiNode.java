@@ -7,7 +7,8 @@ import java.util.List;
 import java.util.Set;
 
 import javax.ws.rs.core.Response;
-
+import org.apache.commons.lang3.StringUtils;
+import org.iot.dsa.node.DSBool;
 import org.iot.dsa.node.DSElement;
 import org.iot.dsa.node.DSIObject;
 import org.iot.dsa.node.DSIValue;
@@ -31,7 +32,6 @@ public class WebApiNode extends RemovableNode {
 	
 	private String address;
 	private WebClientProxy clientProxy;
-	private boolean loaded = false;
 	private Boolean isRoot = null;
 	
 	public WebApiNode() {
@@ -48,6 +48,12 @@ public class WebApiNode extends RemovableNode {
 	}
 	
 	public WebClientProxy getClientProxy() {
+	    if (clientProxy == null) {
+	        DSNode parent = getParent();
+	        if (parent instanceof WebApiNode) {
+                clientProxy = ((WebApiNode) parent).getClientProxy();
+            }
+	    }
         return clientProxy;
     }
 	
@@ -113,11 +119,9 @@ public class WebApiNode extends RemovableNode {
 	protected void onStable() {
 		if (isRoot) {
 			init();
+			makeAddAddressAction();
 		} else if (clientProxy == null) {
-		    DSNode parent = getParent();
-		    if (parent instanceof WebApiNode) {
-		        clientProxy = ((WebApiNode) parent).getClientProxy();
-		    }
+		    getClientProxy();
 		}
 		setupExtraActions();
 	}
@@ -133,11 +137,11 @@ public class WebApiNode extends RemovableNode {
 	}
 
     public void get() {
-		Response r = clientProxy.get(address, new DSMap());
+		Response r = getClientProxy().get(address, new DSMap());
 		String s = r.readEntity(String.class);
 		DSMap m = Util.parseJsonMap(s);
 		update(m);
-		loaded = true;
+		put("Loaded", DSBool.TRUE).setHidden(true).setReadOnly(true);
 	}
 	
 	public void update(DSMap propMap) {
@@ -146,7 +150,14 @@ public class WebApiNode extends RemovableNode {
 			if (!info.isAction()) {
 				String name = info.getName();
 				if (!(name.equals("Address") || name.equals("Username") || name.equals("Password"))) {
-					toRemove.add(name);
+				    if (info.isNode()) {
+				        DSIObject ma = info.getNode().get("Manually Added");
+				        if (!(ma instanceof DSBool && ((DSBool) ma).toBoolean())) {
+				            toRemove.add(name);
+				        }
+				    } else {
+	                    toRemove.add(name);
+				    }
 				}
 			}
 		}
@@ -161,9 +172,20 @@ public class WebApiNode extends RemovableNode {
 				DSMap links = value.toMap();
 				updateLinks(links, toRemove);
 			} else {
-				put(key, value.copy());
+				put(key, value.copy()).setReadOnly(true);
 				toRemove.remove(key);
 			}
+		}
+		if (address.endsWith("/search/sources") || address.endsWith("/search/sources/")) {
+		    String crawlAddr = address.endsWith("/") ? address + "crawl" : address + "/crawl";
+		    DSNode node = getNode("Crawl");
+            if (node instanceof WebApiNode) {
+                WebApiNode itemNode = (WebApiNode) node;
+                itemNode.setAddress(crawlAddr, true);
+            } else {
+                put("Crawl", new WebApiNode(crawlAddr, clientProxy));
+            }
+            toRemove.remove("Crawl");
 		}
 		for (String name: toRemove) {
 			remove(name);
@@ -220,14 +242,17 @@ public class WebApiNode extends RemovableNode {
 		this.address = address;
 		if (changed) {
 		    setupExtraActions();
-		    if (loaded && refreshIfChanged) {
+		    if (Util.getBool(this, "Loaded") && refreshIfChanged) {
 	            init();
 	        }
 		}
 	}
 	
 	private void setupExtraActions() {
-	    List<WebApiMethod> methods = WebApiMethod.find(clientProxy.removeBase(address));
+	    if (address == null) {
+	        return;
+	    }
+	    List<WebApiMethod> methods = WebApiMethod.find(getClientProxy().removeBase(address));
 	    for (final WebApiMethod method: methods) {
 	        DSAction act = new DSAction() {
 	            @Override
@@ -248,11 +273,11 @@ public class WebApiNode extends RemovableNode {
 	                } else {
 	                    type = DSValueType.STRING;
 	                }
-	                act.addParameter(param.getName(), type, param.getDescription());
+	                act.addParameter(StringUtils.capitalize(param.getName()), type, param.getDescription());
 	            }
 	        }
 	        if (method.getBodyParameterName() != null) {
-	            act.addDefaultParameter(method.getBodyParameterName(), DSString.EMPTY, method.getBodyParameterDescription()).setEditor("textarea");
+	            act.addDefaultParameter(StringUtils.capitalize(method.getBodyParameterName()), DSString.EMPTY, method.getBodyParameterDescription()).setEditor("textarea");
 	        }
 	        act.setResultType(ResultType.VALUES);
 	        act.addValueResult("Result", DSValueType.STRING).setEditor("textarea");
@@ -261,15 +286,15 @@ public class WebApiNode extends RemovableNode {
 	}
 	
 	private ActionResult invokeMethod(WebApiMethod method, DSInfo actionInfo, DSMap parameters) {
-	    if (clientProxy == null) {
+	    if (getClientProxy() == null) {
 	        return null;
 	    }
 	    final DSAction action = actionInfo.getAction();
 	    Object body = null;
 	    if (method.getBodyParameterName() != null) {
-	        body = parameters.get(method.getBodyParameterName()).toString();
+	        body = parameters.get(StringUtils.capitalize(method.getBodyParameterName())).toString();
 	    }
-	    Response r = clientProxy.invoke(method.getType(), address, parameters, body);
+	    Response r = getClientProxy().invoke(method.getType(), address, parameters, body);
 	    String s = r.readEntity(String.class);
 	    final List<DSIValue> values = Arrays.asList(DSString.valueOf(s));
 	    return new ActionValues() {
@@ -288,5 +313,26 @@ public class WebApiNode extends RemovableNode {
                 return values.iterator();
             }
         };
+	}
+	
+	private void makeAddAddressAction() {
+	    DSAction act = new DSAction() {
+            @Override
+            public ActionResult invoke(DSInfo info, ActionInvocation invocation) {
+                ((WebApiNode) info.getParent()).addAddress(invocation.getParameters());
+                return null;
+            }
+        };
+        act.addParameter("Name", DSValueType.STRING, null);
+        act.addDefaultParameter("Address", DSString.valueOf(address), null);
+        put("Add Address", act);
+	}
+	
+	private void addAddress(DSMap parameters) {
+	    String name = parameters.getString("Name");
+        String addr = parameters.getString("Address");
+        WebApiNode n = new WebApiNode(addr, clientProxy);
+        put(name, n);
+        n.put("Manually Added", DSBool.TRUE).setReadOnly(true).setHidden(true);
 	}
 }
