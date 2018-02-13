@@ -1,14 +1,15 @@
 {
   "name": "dslink-java-v2-pi",
-  "version": "0.2.0.0",
+  "dsa-version": "1.0",
+  "version": "1.0.1.0",
   "description": "PI Web API DSLink",
   "main": "bin/dslink-java-v2-pi",
   "configs": {
-    "rootType": {
+    "mainType": {
       "desc1": "*************** THIS IS REQUIRED AND MUST BE CHANGED ***************",
       "desc2": "Fully qualified class name of the root node of the link.",
       "type": "string",
-      "value": "org.iot.dsa.pi.RootNode"
+      "value": "org.iot.dsa.pi.MainNode"
     },
     "broker": {
       "desc1": "*************** OPTIONAL CONFIGS IN ALPHABETICAL ORDER ***************",
