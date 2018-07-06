@@ -23,6 +23,7 @@ import org.iot.dsa.node.action.ActionResult;
 import org.iot.dsa.node.action.ActionSpec;
 import org.iot.dsa.node.action.ActionValues;
 import org.iot.dsa.node.action.ActionSpec.ResultType;
+import org.iot.dsa.node.action.DSAbstractAction;
 import org.iot.dsa.node.action.DSAction;
 import org.iot.dsa.pi.WebApiMethod.UrlParameter;
 import org.iot.dsa.pi.node.RemovableNode;
@@ -260,7 +261,7 @@ public class WebApiNode extends RemovableNode {
 	    if (clientProxy == null) {
 	        return null;
 	    }
-	    final DSAction action = actionInfo.getAction();
+	    final DSAbstractAction action = actionInfo.getAction();
 	    Object body = null;
 	    if (method.getBodyParameterName() != null) {
 	        body = parameters.get(method.getBodyParameterName()).toString();
