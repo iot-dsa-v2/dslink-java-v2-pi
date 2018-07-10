@@ -108,6 +108,10 @@ public class WebApiNode extends RemovableNode {
 	    return clientProxy;
 	}
 	
+	public WebClientProxy getClientProxy() {
+	    return clientProxy;
+	}
+	
 	@Override
 	protected void onStarted() {
 		restoreClientProxy();
@@ -117,6 +121,7 @@ public class WebApiNode extends RemovableNode {
 	protected void onStable() {
 		if (isRoot) {
 			init();
+			makeAddAddressAction();
 		}
 		if (address != null) {
 		    setupExtraActions();
@@ -177,7 +182,7 @@ public class WebApiNode extends RemovableNode {
 		    DSNode node = getNode("Crawl");
             if (node instanceof WebApiNode) {
                 WebApiNode itemNode = (WebApiNode) node;
-                itemNode.setAddress(crawlAddr, true);
+                itemNode.setAddress(crawlAddr);
             } else {
                 put("Crawl", new WebApiNode(crawlAddr, clientProxy));
             }
