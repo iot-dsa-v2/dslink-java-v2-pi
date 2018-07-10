@@ -3,7 +3,7 @@ import groovy.json.JsonSlurper
 apply plugin: 'java'
 apply plugin: 'application'
 
-group 'org.iot.dsa'
+group 'org.iot-dsa'
 mainClassName = 'org.iot.dsa.dslink.DSLink'
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
@@ -17,20 +17,14 @@ build {
 repositories {
     mavenCentral()
     maven {
-        url 'https://oss.sonatype.org/content/repositories/snapshots/'
+        url 'https://jitpack.io'
     }
-    flatDir { dirs 'dsa' }
-    flatDir { dirs 'osi' }
 }
 
 dependencies {
-    compile 'org.iot.dsa:dslink-core:+'
-    compile 'org.iot.dsa:dslink-websocket-standalone:+'
-    compile 'org.glassfish.tyrus.bundles:tyrus-standalone-client:1.13'
-    compile 'org.apache.commons:commons-lang3:3.6'
-    compile 'org.apache.cxf:cxf-rt-rs-client:3.0.0-milestone1'
-	
-    testCompile 'junit:junit:+'
+    implementation 'com.github.iot-dsa-v2:sdk-dslink-java-v2:+'
+    implementation 'org.apache.commons:commons-lang3:3.6'
+    implementation 'org.apache.cxf:cxf-rt-rs-client:3.0.0-milestone1'
 }
 
 
@@ -42,5 +36,5 @@ run {
 }
 
 task wrapper(type: Wrapper) {
-    gradleVersion = '4.2'
+    gradleVersion = '4.8.1'
 }

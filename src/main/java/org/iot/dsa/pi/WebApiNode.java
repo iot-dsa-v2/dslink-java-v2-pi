@@ -24,6 +24,7 @@ import org.iot.dsa.node.action.ActionResult;
 import org.iot.dsa.node.action.ActionSpec;
 import org.iot.dsa.node.action.ActionValues;
 import org.iot.dsa.node.action.ActionSpec.ResultType;
+import org.iot.dsa.node.action.DSAbstractAction;
 import org.iot.dsa.node.action.DSAction;
 import org.iot.dsa.pi.WebApiMethod.UrlParameter;
 import org.iot.dsa.pi.node.RemovableNode;
@@ -46,16 +47,6 @@ public class WebApiNode extends RemovableNode {
 		this.clientProxy = clientProxy;
 		this.isRoot = isRoot;
 	}
-	
-	public WebClientProxy getClientProxy() {
-	    if (clientProxy == null) {
-	        DSNode parent = getParent();
-	        if (parent instanceof WebApiNode) {
-                clientProxy = ((WebApiNode) parent).getClientProxy();
-            }
-	    }
-        return clientProxy;
-    }
 	
 	@Override
 	protected void declareDefaults() {
@@ -95,35 +86,41 @@ public class WebApiNode extends RemovableNode {
 		init();
 	}
 	
+	private WebClientProxy restoreClientProxy() {
+	    if (isRoot == null) {
+            isRoot = !(getParent() instanceof WebApiNode);
+        }
+	    if (isRoot) {
+            if (address == null) {
+                DSIObject adr = get("Address");
+                address = adr instanceof DSString ? ((DSString) adr).toString() : "";
+            }
+            if (clientProxy == null) {
+                DSIObject usr = get("Username");
+                DSIObject pass = get("Password");
+                String username = usr instanceof DSString ? ((DSString) usr).toString() : null;
+                String password = pass instanceof DSString ? ((DSString) pass).toString() : null;
+                clientProxy = new WebClientProxy(address, username, password);
+            }
+        } else if (clientProxy == null) {
+            clientProxy = ((WebApiNode) getParent()).restoreClientProxy();
+        }
+	    return clientProxy;
+	}
+	
 	@Override
 	protected void onStarted() {
-		if (isRoot == null) {
-			isRoot = !(getParent() instanceof WebApiNode);
-		}
-		if (isRoot) {
-			if (address == null) {
-				DSIObject adr = get("Address");
-				address = adr instanceof DSString ? ((DSString) adr).toString() : "";
-			}
-			if (clientProxy == null) {
-				DSIObject usr = get("Username");
-				DSIObject pass = get("Password");
-				String username = usr instanceof DSString ? ((DSString) usr).toString() : null;
-				String password = pass instanceof DSString ? ((DSString) pass).toString() : null;
-				clientProxy = new WebClientProxy(address, username, password);
-			}
-		}
+		restoreClientProxy();
 	}
 	
 	@Override
 	protected void onStable() {
 		if (isRoot) {
 			init();
-			makeAddAddressAction();
-		} else if (clientProxy == null) {
-		    getClientProxy();
 		}
-		setupExtraActions();
+		if (address != null) {
+		    setupExtraActions();
+		}
 	}
 	
 	protected void init() {
@@ -141,7 +138,6 @@ public class WebApiNode extends RemovableNode {
 		String s = r.readEntity(String.class);
 		DSMap m = Util.parseJsonMap(s);
 		update(m);
-		put("Loaded", DSBool.TRUE).setHidden(true).setReadOnly(true);
 	}
 	
 	public void update(DSMap propMap) {
@@ -207,7 +203,7 @@ public class WebApiNode extends RemovableNode {
 					WebApiNode itemNode;
 					if (node instanceof WebApiNode) {
 						itemNode = (WebApiNode) node;
-						itemNode.setAddress(selfLink, false);
+						itemNode.setAddress(selfLink);
 					} else {
 						itemNode = new WebApiNode(selfLink, clientProxy);
 						put(name, itemNode);
@@ -228,7 +224,7 @@ public class WebApiNode extends RemovableNode {
 				DSNode node = getNode(key);
 				if (node instanceof WebApiNode) {
 					WebApiNode itemNode = (WebApiNode) node;
-					itemNode.setAddress(value.toString(), true);
+					itemNode.setAddress(value.toString());
 				} else {
 					put(key, new WebApiNode(value.toString(), clientProxy));
 				}
@@ -237,14 +233,12 @@ public class WebApiNode extends RemovableNode {
 		}
 	}
 	
-	public void setAddress(String address, boolean refreshIfChanged) {
+	public void setAddress(String address) {
 		boolean changed = !address.equals(this.address);
 		this.address = address;
 		if (changed) {
 		    setupExtraActions();
-		    if (Util.getBool(this, "Loaded") && refreshIfChanged) {
-	            init();
-	        }
+		    init();
 		}
 	}
 	
@@ -289,7 +283,7 @@ public class WebApiNode extends RemovableNode {
 	    if (getClientProxy() == null) {
 	        return null;
 	    }
-	    final DSAction action = actionInfo.getAction();
+	    final DSAbstractAction action = actionInfo.getAction();
 	    Object body = null;
 	    if (method.getBodyParameterName() != null) {
 	        body = parameters.get(StringUtils.capitalize(method.getBodyParameterName())).toString();
