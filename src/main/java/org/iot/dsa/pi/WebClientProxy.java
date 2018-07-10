@@ -2,7 +2,7 @@ package org.iot.dsa.pi;
 
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-
+import org.apache.commons.lang3.StringUtils;
 import org.apache.cxf.jaxrs.client.WebClient;
 import org.iot.dsa.node.DSMap;
 import org.iot.dsa.node.DSMap.Entry;
@@ -77,7 +77,7 @@ public class WebClientProxy {
         for (int i = 0; i < urlParameters.size(); i++) {
             Entry entry = urlParameters.getEntry(i);
             Object value = Util.dsElementToObject(entry.getValue());
-            client.query(entry.getKey(), value);
+            client.query(StringUtils.uncapitalize(entry.getKey()), value);
         }
         return client;
 	}
