@@ -1,7 +1,6 @@
 {
   "name": "dslink-java-v2-pi",
-  "dsa-version": "2.0",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "PI Web API DSLink",
   "main": "bin/dslink-java-v2-pi",
   "configs": {

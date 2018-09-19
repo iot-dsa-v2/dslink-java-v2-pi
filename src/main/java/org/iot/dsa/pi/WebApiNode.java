@@ -162,8 +162,7 @@ public class WebApiNode extends RemovableNode {
 				}
 			}
 		}
-		for (int i = 0; i < propMap.size(); i++) {
-			Entry e = propMap.getEntry(i);
+		for (Entry e : propMap) {
 			String key = e.getKey();
 			DSElement value = e.getValue();
 			if (key.equals("Items") && value.isList()) {
@@ -221,8 +220,7 @@ public class WebApiNode extends RemovableNode {
 	}
 	
 	private void updateLinks(DSMap links, Set<String> oldNodesToRemove) {
-		for (int i = 0; i < links.size(); i++) {
-			Entry e = links.getEntry(i);
+	    for (Entry e : links) {
 			String key = e.getKey();
 			DSElement value = e.getValue();
 			if (!key.equals("Self")) {
