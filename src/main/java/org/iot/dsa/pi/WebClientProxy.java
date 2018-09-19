@@ -74,8 +74,7 @@ public class WebClientProxy {
             client =  WebClient.create(address);
         }
         client.accept(MediaType.APPLICATION_JSON);
-        for (int i = 0; i < urlParameters.size(); i++) {
-            Entry entry = urlParameters.getEntry(i);
+        for (Entry entry : urlParameters) {
             Object value = Util.dsElementToObject(entry.getValue());
             client.query(StringUtils.uncapitalize(entry.getKey()), value);
         }
