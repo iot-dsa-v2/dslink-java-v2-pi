@@ -18,10 +18,9 @@ public class MainNode extends DSMainNode {
     }
     
     private static DSAction makeAddEndpointAction() {
-    	DSAction act = new DSAction() {
-    		@Override
-    		public ActionResult invoke(DSInfo info, ActionInvocation invocation) {
-    			((MainNode) info.getParent()).addEndpoint(invocation.getParameters());
+    	DSAction act = new DSAction.Parameterless() {
+    		public ActionResult invoke(DSInfo target, ActionInvocation invocation) {
+    			((MainNode) target.get()).addEndpoint(invocation.getParameters());
     			return null;
     		}
     	};
