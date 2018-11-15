@@ -22,7 +22,6 @@ import org.iot.dsa.node.action.ActionResult;
 import org.iot.dsa.node.action.ActionSpec;
 import org.iot.dsa.node.action.ActionSpec.ResultType;
 import org.iot.dsa.node.action.ActionValues;
-import org.iot.dsa.node.action.DSAbstractAction;
 import org.iot.dsa.node.action.DSAction;
 import org.iot.dsa.pi.WebApiMethod.UrlParameter;
 import org.iot.dsa.pi.node.RemovableNode;
@@ -46,38 +45,6 @@ public class WebApiNode extends RemovableNode {
         this.isRoot = isRoot;
     }
 
-    @Override
-    protected void declareDefaults() {
-        super.declareDefaults();
-        declareDefault("Refresh", makeRefreshAction());
-    }
-
-    private DSAction makeRefreshAction() {
-        DSAction act = new DSAction() {
-            @Override
-            public ActionResult invoke(DSInfo info, ActionInvocation invocation) {
-                ((WebApiNode) info.getParent()).init();
-                return null;
-            }
-        };
-        return act;
-    }
-
-    private DSAction makeEditAction() {
-        DSAction act = new DSAction() {
-            @Override
-            public ActionResult invoke(DSInfo info, ActionInvocation invocation) {
-                ((WebApiNode) info.getParent()).edit(invocation.getParameters());
-                return null;
-            }
-        };
-        act.addDefaultParameter("Address", DSString.valueOf(address), null);
-        act.addDefaultParameter("Username", DSString.valueOf(clientProxy.username), null);
-        act.addDefaultParameter("Password", DSString.valueOf(clientProxy.password), null)
-           .setEditor("password");
-        return act;
-    }
-
     public void edit(DSMap parameters) {
         address = parameters.getString("Address");
         clientProxy.username = parameters.getString("Username");
@@ -85,65 +52,24 @@ public class WebApiNode extends RemovableNode {
         init();
     }
 
-    private WebClientProxy restoreClientProxy() {
-        if (isRoot == null) {
-            isRoot = !(getParent() instanceof WebApiNode);
-        }
-        if (isRoot) {
-            if (address == null) {
-                DSIObject adr = get("Address");
-                address = adr instanceof DSString ? ((DSString) adr).toString() : "";
-            }
-            if (clientProxy == null) {
-                DSIObject usr = get("Username");
-                DSIObject pass = get("Password");
-                String username = usr instanceof DSString ? ((DSString) usr).toString() : null;
-                String password = pass instanceof DSString ? ((DSString) pass).toString() : null;
-                clientProxy = new WebClientProxy(address, username, password);
-            }
-        } else if (clientProxy == null) {
-            clientProxy = ((WebApiNode) getParent()).restoreClientProxy();
-        }
-        return clientProxy;
+    public void get() {
+        Response r = getClientProxy().get(address, new DSMap());
+        String s = r.readEntity(String.class);
+        DSMap m = Util.parseJsonMap(s);
+        update(m);
     }
 
     public WebClientProxy getClientProxy() {
         return clientProxy;
     }
 
-    @Override
-    protected void onStarted() {
-        restoreClientProxy();
-    }
-
-    @Override
-    protected void onStable() {
-        if (isRoot) {
-            init();
-            makeAddAddressAction();
-        }
-        if (address != null) {
+    public void setAddress(String address) {
+        boolean changed = !address.equals(this.address);
+        this.address = address;
+        if (changed) {
             setupExtraActions();
+            init();
         }
-    }
-
-    protected void init() {
-        if (isRoot) {
-            put("Edit", makeEditAction()).setTransient(true);
-            put("Address", DSString.valueOf(address)).setReadOnly(true).setHidden(true);
-            put("Username", DSString.valueOf(clientProxy.username)).setReadOnly(true)
-                                                                   .setHidden(true);
-            put("Password", DSString.valueOf(clientProxy.password)).setReadOnly(true)
-                                                                   .setHidden(true);
-        }
-        get();
-    }
-
-    public void get() {
-        Response r = getClientProxy().get(address, new DSMap());
-        String s = r.readEntity(String.class);
-        DSMap m = Util.parseJsonMap(s);
-        update(m);
     }
 
     public void update(DSMap propMap) {
@@ -194,6 +120,188 @@ public class WebApiNode extends RemovableNode {
         }
     }
 
+    @Override
+    protected void declareDefaults() {
+        super.declareDefaults();
+        declareDefault("Refresh", makeRefreshAction());
+    }
+
+    protected void init() {
+        if (isRoot) {
+            put("Edit", makeEditAction()).setTransient(true);
+            put("Address", DSString.valueOf(address)).setReadOnly(true).setHidden(true);
+            put("Username", DSString.valueOf(clientProxy.username)).setReadOnly(true)
+                                                                   .setHidden(true);
+            put("Password", DSString.valueOf(clientProxy.password)).setReadOnly(true)
+                                                                   .setHidden(true);
+        }
+        get();
+    }
+
+    @Override
+    protected void onStable() {
+        if (isRoot) {
+            init();
+            makeAddAddressAction();
+        }
+        if (address != null) {
+            setupExtraActions();
+        }
+    }
+
+    @Override
+    protected void onStarted() {
+        restoreClientProxy();
+    }
+
+    private void addAddress(DSMap parameters) {
+        String name = parameters.getString("Name");
+        String addr = parameters.getString("Address");
+        WebApiNode n = new WebApiNode(addr, clientProxy);
+        put(name, n);
+        n.put("Manually Added", DSBool.TRUE).setReadOnly(true).setHidden(true);
+    }
+
+    private ActionResult invokeMethod(WebApiMethod method, final DSAction action,
+                                      DSMap parameters) {
+        if (getClientProxy() == null) {
+            return null;
+        }
+        Object body = null;
+        if (method.getBodyParameterName() != null) {
+            body = parameters.get(StringUtils.capitalize(method.getBodyParameterName())).toString();
+        }
+        Response r = getClientProxy().invoke(method.getType(), address, parameters, body);
+        String s = r.readEntity(String.class);
+        final List<DSIValue> values = Arrays.asList(DSString.valueOf(s));
+        return new ActionValues() {
+
+            @Override
+            public ActionSpec getAction() {
+                return action;
+            }
+
+            public int getColumnCount() {
+                return values.size();
+            }
+
+            public void getMetadata(int col, DSMap bucket) {
+                action.getColumnMetadata(col, bucket);
+            }
+
+            @Override
+            public DSIValue getValue(int col) {
+                return values.get(col);
+            }
+
+            @Override
+            public void onClose() {
+            }
+        };
+    }
+
+    private void makeAddAddressAction() {
+        DSAction act = new DSAction.Parameterless() {
+            @Override
+            public ActionResult invoke(DSInfo target, ActionInvocation invocation) {
+                ((WebApiNode) target.get()).addAddress(invocation.getParameters());
+                return null;
+            }
+        };
+        act.addParameter("Name", DSValueType.STRING, null);
+        act.addDefaultParameter("Address", DSString.valueOf(address), null);
+        put("Add Address", act);
+    }
+
+    private DSAction makeEditAction() {
+        DSAction act = new DSAction.Parameterless() {
+            @Override
+            public ActionResult invoke(DSInfo target, ActionInvocation invocation) {
+                ((WebApiNode) target.get()).edit(invocation.getParameters());
+                return null;
+            }
+        };
+        act.addDefaultParameter("Address", DSString.valueOf(address), null);
+        act.addDefaultParameter("Username", DSString.valueOf(clientProxy.username), null);
+        act.addDefaultParameter("Password", DSString.valueOf(clientProxy.password), null)
+           .setEditor("password");
+        return act;
+    }
+
+    private DSAction makeRefreshAction() {
+        DSAction act = new DSAction.Parameterless() {
+            @Override
+            public ActionResult invoke(DSInfo target, ActionInvocation invocation) {
+                ((WebApiNode) target.get()).init();
+                return null;
+            }
+        };
+        return act;
+    }
+
+    private WebClientProxy restoreClientProxy() {
+        if (isRoot == null) {
+            isRoot = !(getParent() instanceof WebApiNode);
+        }
+        if (isRoot) {
+            if (address == null) {
+                DSIObject adr = get("Address");
+                address = adr instanceof DSString ? ((DSString) adr).toString() : "";
+            }
+            if (clientProxy == null) {
+                DSIObject usr = get("Username");
+                DSIObject pass = get("Password");
+                String username = usr instanceof DSString ? ((DSString) usr).toString() : null;
+                String password = pass instanceof DSString ? ((DSString) pass).toString() : null;
+                clientProxy = new WebClientProxy(address, username, password);
+            }
+        } else if (clientProxy == null) {
+            clientProxy = ((WebApiNode) getParent()).restoreClientProxy();
+        }
+        return clientProxy;
+    }
+
+    private void setupExtraActions() {
+        if (address == null) {
+            return;
+        }
+        List<WebApiMethod> methods = WebApiMethod.find(getClientProxy().removeBase(address));
+        for (final WebApiMethod method : methods) {
+            DSAction act = new DSAction.Parameterless() {
+                @Override
+                public ActionResult invoke(DSInfo target, ActionInvocation invocation) {
+                    return ((WebApiNode) target.get())
+                            .invokeMethod(method, this, invocation.getParameters());
+                }
+            };
+            for (UrlParameter param : method.getUrlParameters()) {
+                Class<?> typeclass = param.getType();
+                if (typeclass.equals(List.class)) {
+                    act.addDefaultParameter(param.getName(), new DSList(), param.getDescription());
+                } else {
+                    DSValueType type;
+                    if (typeclass.equals(Boolean.class)) {
+                        type = DSValueType.BOOL;
+                    } else if (typeclass.equals(Integer.class)) {
+                        type = DSValueType.NUMBER;
+                    } else {
+                        type = DSValueType.STRING;
+                    }
+                    act.addParameter(StringUtils.capitalize(param.getName()), type,
+                                     param.getDescription());
+                }
+            }
+            if (method.getBodyParameterName() != null) {
+                act.addDefaultParameter(StringUtils.capitalize(method.getBodyParameterName()),
+                                        DSString.EMPTY, method.getBodyParameterDescription())
+                   .setEditor("textarea");
+            }
+            act.setResultType(ResultType.VALUES);
+            act.addColumnMetadata("Result", DSValueType.STRING).setEditor("textarea");
+            put(method.getName(), act).setTransient(true);
+        }
+    }
+
     private void updateItems(DSList items, Set<String> oldNodesToRemove) {
         for (DSElement elem : items) {
             if (elem.isMap()) {
@@ -236,114 +344,5 @@ public class WebApiNode extends RemovableNode {
                 oldNodesToRemove.remove(key);
             }
         }
-    }
-
-    public void setAddress(String address) {
-        boolean changed = !address.equals(this.address);
-        this.address = address;
-        if (changed) {
-            setupExtraActions();
-            init();
-        }
-    }
-
-    private void setupExtraActions() {
-        if (address == null) {
-            return;
-        }
-        List<WebApiMethod> methods = WebApiMethod.find(getClientProxy().removeBase(address));
-        for (final WebApiMethod method : methods) {
-            DSAction act = new DSAction() {
-                @Override
-                public ActionResult invoke(DSInfo info, ActionInvocation invocation) {
-                    return ((WebApiNode) info.getParent())
-                            .invokeMethod(method, info, invocation.getParameters());
-                }
-            };
-            for (UrlParameter param : method.getUrlParameters()) {
-                Class<?> typeclass = param.getType();
-                if (typeclass.equals(List.class)) {
-                    act.addDefaultParameter(param.getName(), new DSList(), param.getDescription());
-                } else {
-                    DSValueType type;
-                    if (typeclass.equals(Boolean.class)) {
-                        type = DSValueType.BOOL;
-                    } else if (typeclass.equals(Integer.class)) {
-                        type = DSValueType.NUMBER;
-                    } else {
-                        type = DSValueType.STRING;
-                    }
-                    act.addParameter(StringUtils.capitalize(param.getName()), type,
-                                     param.getDescription());
-                }
-            }
-            if (method.getBodyParameterName() != null) {
-                act.addDefaultParameter(StringUtils.capitalize(method.getBodyParameterName()),
-                                        DSString.EMPTY, method.getBodyParameterDescription())
-                   .setEditor("textarea");
-            }
-            act.setResultType(ResultType.VALUES);
-            act.addValueResult("Result", DSValueType.STRING).setEditor("textarea");
-            put(method.getName(), act).setTransient(true);
-        }
-    }
-
-    private ActionResult invokeMethod(WebApiMethod method, DSInfo actionInfo, DSMap parameters) {
-        if (getClientProxy() == null) {
-            return null;
-        }
-        final DSAbstractAction action = actionInfo.getAction();
-        Object body = null;
-        if (method.getBodyParameterName() != null) {
-            body = parameters.get(StringUtils.capitalize(method.getBodyParameterName())).toString();
-        }
-        Response r = getClientProxy().invoke(method.getType(), address, parameters, body);
-        String s = r.readEntity(String.class);
-        final List<DSIValue> values = Arrays.asList(DSString.valueOf(s));
-        return new ActionValues() {
-
-            @Override
-            public void onClose() {
-            }
-
-            @Override
-            public ActionSpec getAction() {
-                return action;
-            }
-
-            public int getColumnCount() {
-                return values.size();
-            }
-
-            public void getMetadata(int col, DSMap bucket) {
-                bucket.putAll(action.getValueResult(col));
-            }
-
-            @Override
-            public DSIValue getValue(int col) {
-                return values.get(col);
-            }
-        };
-    }
-
-    private void makeAddAddressAction() {
-        DSAction act = new DSAction() {
-            @Override
-            public ActionResult invoke(DSInfo info, ActionInvocation invocation) {
-                ((WebApiNode) info.getParent()).addAddress(invocation.getParameters());
-                return null;
-            }
-        };
-        act.addParameter("Name", DSValueType.STRING, null);
-        act.addDefaultParameter("Address", DSString.valueOf(address), null);
-        put("Add Address", act);
-    }
-
-    private void addAddress(DSMap parameters) {
-        String name = parameters.getString("Name");
-        String addr = parameters.getString("Address");
-        WebApiNode n = new WebApiNode(addr, clientProxy);
-        put(name, n);
-        n.put("Manually Added", DSBool.TRUE).setReadOnly(true).setHidden(true);
     }
 }
