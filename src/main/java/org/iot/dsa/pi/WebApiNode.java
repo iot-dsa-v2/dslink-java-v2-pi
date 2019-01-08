@@ -129,11 +129,11 @@ public class WebApiNode extends RemovableNode {
     protected void init() {
         if (isRoot) {
             put("Edit", makeEditAction()).setTransient(true);
-            put("Address", DSString.valueOf(address)).setReadOnly(true).setHidden(true);
+            put("Address", DSString.valueOf(address)).setReadOnly(true).setPrivate(true);
             put("Username", DSString.valueOf(clientProxy.username)).setReadOnly(true)
-                                                                   .setHidden(true);
+                                                                   .setPrivate(true);
             put("Password", DSString.valueOf(clientProxy.password)).setReadOnly(true)
-                                                                   .setHidden(true);
+                                                                   .setPrivate(true);
         }
         get();
     }
@@ -159,7 +159,7 @@ public class WebApiNode extends RemovableNode {
         String addr = parameters.getString("Address");
         WebApiNode n = new WebApiNode(addr, clientProxy);
         put(name, n);
-        n.put("Manually Added", DSBool.TRUE).setReadOnly(true).setHidden(true);
+        n.put("Manually Added", DSBool.TRUE).setReadOnly(true).setPrivate(true);
     }
 
     private ActionResult invokeMethod(WebApiMethod method, final DSAction action,
