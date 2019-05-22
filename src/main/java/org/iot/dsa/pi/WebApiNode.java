@@ -24,9 +24,8 @@ import org.iot.dsa.node.action.ActionSpec.ResultType;
 import org.iot.dsa.node.action.ActionValues;
 import org.iot.dsa.node.action.DSAction;
 import org.iot.dsa.pi.WebApiMethod.UrlParameter;
-import org.iot.dsa.pi.node.RemovableNode;
 
-public class WebApiNode extends RemovableNode {
+public class WebApiNode extends DSNode {
 
     private String address;
     private WebClientProxy clientProxy;
