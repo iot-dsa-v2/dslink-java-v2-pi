@@ -1,11 +1,13 @@
 package org.iot.dsa.pi;
 
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import javax.ws.rs.core.Response;
 import org.apache.commons.lang3.StringUtils;
+import org.iot.dsa.dslink.restadapter.CredentialProvider;
+import org.iot.dsa.dslink.restadapter.Util.AUTH_SCHEME;
 import org.iot.dsa.node.DSBool;
 import org.iot.dsa.node.DSElement;
 import org.iot.dsa.node.DSIObject;
@@ -24,16 +26,28 @@ import org.iot.dsa.node.action.ActionSpec.ResultType;
 import org.iot.dsa.node.action.ActionValues;
 import org.iot.dsa.node.action.DSAction;
 import org.iot.dsa.pi.WebApiMethod.UrlParameter;
+import org.iot.dsa.util.DSException;
+import okhttp3.Response;
 
-public class WebApiNode extends DSNode {
+public class WebApiNode extends DSNode implements CredentialProvider {
 
     private String address;
+    private String username;
+    private String password;
     private WebClientProxy clientProxy;
     private Boolean isRoot = null;
+    private boolean newlyCreated;
 
     public WebApiNode() {
+        this.newlyCreated = false;
     }
 
+    public WebApiNode(String address, String username, String password) {
+        this(address, null, true);
+        this.username = username;
+        this.password = password;
+    }
+    
     public WebApiNode(String address, WebClientProxy clientProxy) {
         this(address, clientProxy, false);
     }
@@ -42,36 +56,53 @@ public class WebApiNode extends DSNode {
         this.address = address;
         this.clientProxy = clientProxy;
         this.isRoot = isRoot;
+        this.newlyCreated = true;
     }
 
     public void edit(DSMap parameters) {
         address = parameters.getString("Address");
-        clientProxy.username = parameters.getString("Username");
-        clientProxy.password = parameters.getString("Password");
-        init();
+        username = parameters.getString("Username");
+        password = parameters.getString("Password");
+        init(true);
+    }
+    
+    public static String getBodyFromResponse(Response resp) throws IOException {
+        try {
+            return resp.body().string();
+        } catch (IOException e) {
+            throw e;
+        } finally {
+            if (resp != null) { 
+                resp.close();
+            }
+        }
     }
 
-    public void get() {
-        Response r = getClientProxy().get(address, new DSMap());
-        String s = r.readEntity(String.class);
-        DSMap m = Util.parseJsonMap(s);
-        update(m);
+    public void get(boolean shouldExpand) {
+        Response r = getClientProxy().invoke("GET", address, new DSMap(), null);
+        try {
+            String s = getBodyFromResponse(r);
+            DSMap m = Util.parseJsonMap(s);
+            update(m, shouldExpand);
+        } catch (Exception e) {
+            warn("", e);
+        }
     }
 
     public WebClientProxy getClientProxy() {
         return clientProxy;
     }
 
-    public void setAddress(String address) {
+    public void setAddress(String address, boolean shouldExpand) {
         boolean changed = !address.equals(this.address);
         this.address = address;
         if (changed) {
             setupExtraActions();
-            init();
+            init(shouldExpand);
         }
     }
 
-    public void update(DSMap propMap) {
+    public void update(DSMap propMap, boolean shouldExpand) {
         Set<String> toRemove = new HashSet<String>();
         for (DSInfo info : this) {
             if (!info.isAction()) {
@@ -94,10 +125,13 @@ public class WebApiNode extends DSNode {
             DSElement value = e.getValue();
             if (key.equals("Items") && value.isList()) {
                 DSList items = value.toList();
-                updateItems(items, toRemove);
+                DSList remaining = updateItems(items, toRemove, shouldExpand);
+                if (!remaining.isEmpty()) {
+                    put(key, remaining).setReadOnly(true);
+                }
             } else if (key.equals("Links") && value.isMap()) {
                 DSMap links = value.toMap();
-                updateLinks(links, toRemove);
+                updateLinks(links, toRemove, shouldExpand);
             } else {
                 put(key, value.copy()).setReadOnly(true);
                 toRemove.remove(key);
@@ -108,7 +142,7 @@ public class WebApiNode extends DSNode {
             DSNode node = getNode("Crawl");
             if (node instanceof WebApiNode) {
                 WebApiNode itemNode = (WebApiNode) node;
-                itemNode.setAddress(crawlAddr);
+                itemNode.setAddress(crawlAddr, shouldExpand);
             } else {
                 put("Crawl", new WebApiNode(crawlAddr, clientProxy));
             }
@@ -125,22 +159,21 @@ public class WebApiNode extends DSNode {
         declareDefault("Refresh", makeRefreshAction());
     }
 
-    protected void init() {
+    protected void init(boolean shouldExpand) {
         if (isRoot) {
             put("Edit", makeEditAction()).setTransient(true);
             put("Address", DSString.valueOf(address)).setReadOnly(true).setPrivate(true);
-            put("Username", DSString.valueOf(clientProxy.username)).setReadOnly(true)
-                                                                   .setPrivate(true);
-            put("Password", DSString.valueOf(clientProxy.password)).setReadOnly(true)
-                                                                   .setPrivate(true);
+            put("Username", DSString.valueOf(username)).setReadOnly(true).setPrivate(true);
+            put("Password", DSString.valueOf(password)).setReadOnly(true).setPrivate(true);
         }
-        get();
+        get(shouldExpand);
     }
 
     @Override
     protected void onStable() {
+        super.onStable();
         if (isRoot) {
-            init();
+            init(newlyCreated);
             makeAddAddressAction();
         }
         if (address != null) {
@@ -150,6 +183,7 @@ public class WebApiNode extends DSNode {
 
     @Override
     protected void onStarted() {
+        super.onStarted();
         restoreClientProxy();
     }
 
@@ -171,32 +205,38 @@ public class WebApiNode extends DSNode {
             body = parameters.get(StringUtils.capitalize(method.getBodyParameterName())).toString();
         }
         Response r = getClientProxy().invoke(method.getType(), address, parameters, body);
-        String s = r.readEntity(String.class);
-        final List<DSIValue> values = Arrays.asList(DSString.valueOf(s));
-        return new ActionValues() {
+        try {
+            String s = getBodyFromResponse(r);
+            final List<DSIValue> values = Arrays.asList(DSString.valueOf(s));
+            return new ActionValues() {
 
-            @Override
-            public ActionSpec getAction() {
-                return action;
-            }
+                @Override
+                public ActionSpec getAction() {
+                    return action;
+                }
 
-            public int getColumnCount() {
-                return values.size();
-            }
+                public int getColumnCount() {
+                    return values.size();
+                }
 
-            public void getMetadata(int col, DSMap bucket) {
-                action.getColumnMetadata(col, bucket);
-            }
+                public void getMetadata(int col, DSMap bucket) {
+                    action.getColumnMetadata(col, bucket);
+                }
 
-            @Override
-            public DSIValue getValue(int col) {
-                return values.get(col);
-            }
+                @Override
+                public DSIValue getValue(int col) {
+                    return values.get(col);
+                }
 
-            @Override
-            public void onClose() {
-            }
-        };
+                @Override
+                public void onClose() {
+                }
+            };
+        } catch (IOException e) {
+            warn("", e);
+            DSException.throwRuntime(e);
+            return null;
+        }
     }
 
     private void makeAddAddressAction() {
@@ -221,9 +261,8 @@ public class WebApiNode extends DSNode {
             }
         };
         act.addDefaultParameter("Address", DSString.valueOf(address), null);
-        act.addDefaultParameter("Username", DSString.valueOf(clientProxy.username), null);
-        act.addDefaultParameter("Password", DSString.valueOf(clientProxy.password), null)
-           .setEditor("password");
+        act.addDefaultParameter("Username", DSString.valueOf(username), null);
+        act.addDefaultParameter("Password", DSString.valueOf(password), null).setEditor("password");
         return act;
     }
 
@@ -231,7 +270,7 @@ public class WebApiNode extends DSNode {
         DSAction act = new DSAction.Parameterless() {
             @Override
             public ActionResult invoke(DSInfo target, ActionInvocation invocation) {
-                ((WebApiNode) target.get()).init();
+                ((WebApiNode) target.get()).init(true);
                 return null;
             }
         };
@@ -247,12 +286,16 @@ public class WebApiNode extends DSNode {
                 DSIObject adr = get("Address");
                 address = adr instanceof DSString ? ((DSString) adr).toString() : "";
             }
-            if (clientProxy == null) {
+            if (username == null) {
                 DSIObject usr = get("Username");
+                username = usr instanceof DSString ? ((DSString) usr).toString() : null;
+            }
+            if (password == null) {
                 DSIObject pass = get("Password");
-                String username = usr instanceof DSString ? ((DSString) usr).toString() : null;
-                String password = pass instanceof DSString ? ((DSString) pass).toString() : null;
-                clientProxy = new WebClientProxy(address, username, password);
+                password = pass instanceof DSString ? ((DSString) pass).toString() : null;
+            }
+            if (clientProxy == null) {
+                clientProxy = new WebClientProxy(address, this);
             }
         } else if (clientProxy == null) {
             clientProxy = ((WebApiNode) getParent()).restoreClientProxy();
@@ -301,7 +344,8 @@ public class WebApiNode extends DSNode {
         }
     }
 
-    private void updateItems(DSList items, Set<String> oldNodesToRemove) {
+    private DSList updateItems(DSList items, Set<String> oldNodesToRemove, boolean shouldExpand) {
+        DSList smallItems = new DSList();
         for (DSElement elem : items) {
             if (elem.isMap()) {
                 DSMap item = elem.toMap();
@@ -310,38 +354,78 @@ public class WebApiNode extends DSNode {
                 String selfLink = null;
                 if (links != null) {
                     selfLink = links.getString("Self");
+                    if (selfLink == null) {
+                        selfLink = links.getString("Source");
+                    }
                 }
                 if (name != null && selfLink != null) {
                     DSNode node = getNode(name);
-                    WebApiNode itemNode;
+                    WebApiNode itemNode = null;
                     if (node instanceof WebApiNode) {
                         itemNode = (WebApiNode) node;
-                        itemNode.setAddress(selfLink);
-                    } else {
+                        itemNode.setAddress(selfLink, shouldExpand);
+                    } else if (shouldExpand) {
                         itemNode = new WebApiNode(selfLink, clientProxy);
                         put(name, itemNode);
                     }
                     oldNodesToRemove.remove(name);
-                    itemNode.update(item);
+                    if (itemNode != null) {
+                        itemNode.update(item, shouldExpand);
+                    }
+                } else {
+                    smallItems.add(elem.copy());
                 }
+            } else {
+                smallItems.add(elem.copy());
             }
         }
+        return smallItems;
     }
 
-    private void updateLinks(DSMap links, Set<String> oldNodesToRemove) {
+    private void updateLinks(DSMap links, Set<String> oldNodesToRemove, boolean shouldExpand) {
         for (Entry e : links) {
             String key = e.getKey();
             DSElement value = e.getValue();
-            if (!key.equals("Self")) {
-                DSNode node = getNode(key);
+            if (!key.equals("Self") && !key.equals("Source")) {
+                DSIObject node = get(key);
                 if (node instanceof WebApiNode) {
                     WebApiNode itemNode = (WebApiNode) node;
-                    itemNode.setAddress(value.toString());
-                } else {
+                    itemNode.setAddress(value.toString(), shouldExpand);
+                } else if (shouldExpand) {
                     put(key, new WebApiNode(value.toString(), clientProxy));
                 }
                 oldNodesToRemove.remove(key);
             }
         }
+    }
+    
+    @Override
+    public String getUsername() {
+        return username;
+    }
+    
+    @Override
+    public String getTokenURL() {
+        return null;
+    }
+    
+    @Override
+    public String getPassword() {
+        return password;
+    }
+    
+    @Override
+    public String getClientSecret() {
+        return null;
+    }
+    
+    @Override
+    public String getClientId() {
+        return null;
+    }
+    
+    @Override
+    public AUTH_SCHEME getAuthScheme() {
+        return AUTH_SCHEME.BASIC_USR_PASS;
     }
 }

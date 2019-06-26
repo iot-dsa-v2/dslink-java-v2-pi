@@ -1,6 +1,6 @@
 {
   "name": "dslink-java-v2-pi",
-  "version": "1.0.8",
+  "version": "1.1.0",
   "description": "PI Web API DSLink",
   "main": "bin/dslink-java-v2-pi",
   "configs": {
@@ -12,6 +12,10 @@
       "desc": "all, trace, debug, fine, warn, info, error, admin, fatal, none",
       "type": "enum",
       "value": "info"
+    },
+    "broker": {
+      "type": "url",
+      "value": null
     }
   }
 }
