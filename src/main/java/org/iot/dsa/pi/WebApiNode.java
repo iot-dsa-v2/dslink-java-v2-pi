@@ -25,6 +25,7 @@ import org.iot.dsa.node.action.ActionSpec;
 import org.iot.dsa.node.action.ActionSpec.ResultType;
 import org.iot.dsa.node.action.ActionValues;
 import org.iot.dsa.node.action.DSAction;
+import org.iot.dsa.node.action.DSActionValues;
 import org.iot.dsa.pi.WebApiMethod.UrlParameter;
 import org.iot.dsa.util.DSException;
 import okhttp3.Response;
@@ -37,6 +38,7 @@ public class WebApiNode extends DSNode implements CredentialProvider {
     private WebClientProxy clientProxy;
     private Boolean isRoot = null;
     private boolean newlyCreated;
+    private static DSAction getUrlAction = makeGetUrlAction();
 
     public WebApiNode() {
         this.newlyCreated = false;
@@ -157,6 +159,7 @@ public class WebApiNode extends DSNode implements CredentialProvider {
     protected void declareDefaults() {
         super.declareDefaults();
         declareDefault("Refresh", makeRefreshAction());
+        declareDefault("Get URL", getUrlAction);
     }
 
     protected void init(boolean shouldExpand) {
@@ -285,6 +288,19 @@ public class WebApiNode extends DSNode implements CredentialProvider {
                 return null;
             }
         };
+        return act;
+    }
+    
+    private static DSAction makeGetUrlAction() {
+        DSAction act = new DSAction.Parameterless() {
+            @Override
+            public ActionResult invoke(DSInfo target, ActionInvocation invocation) {
+                String url = ((WebApiNode) target.get()).address;
+                return new DSActionValues(getUrlAction).addResult(DSString.valueOf(url));
+            }
+        };
+        act.setResultType(ResultType.VALUES);
+        act.addColumnMetadata("URL", DSValueType.STRING);
         return act;
     }
 
