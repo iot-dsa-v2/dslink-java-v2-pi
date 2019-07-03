@@ -204,6 +204,17 @@ public class WebApiNode extends DSNode implements CredentialProvider {
         if (method.getBodyParameterName() != null) {
             body = parameters.get(StringUtils.capitalize(method.getBodyParameterName())).toString();
         }
+        
+        Set<String> nullkeys = new HashSet<String>();
+        for (Entry entry: parameters) {
+            if (entry.getValue().isString() && entry.getValue().toString().isEmpty()) {
+                nullkeys.add(entry.getKey());
+            }
+        }
+        for (String key: nullkeys) {
+            parameters.remove(key);
+        }
+        
         Response r = getClientProxy().invoke(method.getType(), address, parameters, body);
         try {
             String s = getBodyFromResponse(r);
