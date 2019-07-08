@@ -345,20 +345,15 @@ public class WebApiNode extends DSNode implements CredentialProvider {
             };
             for (UrlParameter param : method.getUrlParameters()) {
                 Class<?> typeclass = param.getType();
-                if (typeclass.equals(List.class)) {
-                    act.addDefaultParameter(param.getName(), new DSList(), param.getDescription());
+                DSValueType type;
+                if (typeclass.equals(Boolean.class)) {
+                    type = DSValueType.BOOL;
+                } else if (typeclass.equals(Integer.class)) {
+                    type = DSValueType.NUMBER;
                 } else {
-                    DSValueType type;
-                    if (typeclass.equals(Boolean.class)) {
-                        type = DSValueType.BOOL;
-                    } else if (typeclass.equals(Integer.class)) {
-                        type = DSValueType.NUMBER;
-                    } else {
-                        type = DSValueType.STRING;
-                    }
-                    act.addParameter(StringUtils.capitalize(param.getName()), type,
-                                     param.getDescription());
+                    type = DSValueType.STRING;
                 }
+                act.addParameter(StringUtils.capitalize(param.getName()), type, param.getDescription());
             }
             if (method.getBodyParameterName() != null) {
                 act.addDefaultParameter(StringUtils.capitalize(method.getBodyParameterName()),
