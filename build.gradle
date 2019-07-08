@@ -1,6 +1,6 @@
 import groovy.json.JsonSlurper
 
-apply plugin: 'java-library'
+apply plugin: 'java'
 apply plugin: 'application'
 
 group 'org.iot-dsa'
@@ -16,19 +16,25 @@ build {
 
 repositories {
     //mavenLocal()
-    mavenCentral()
+    jcenter()
     maven {
         url 'https://jitpack.io'
     }
 }
 
 dependencies {
-    //implementation 'org.iot-dsa:dslink-v2-websocket:+' //for a locally installed sdk
-    implementation 'com.github.iot-dsa-v2.sdk-dslink-java-v2:dslink-v2-websocket:+'
+    implementation 'com.github.iot-dsa-v2:dslink-java-v2-restadapter:1.1.9'
     implementation 'org.apache.commons:commons-lang3:3.6'
     implementation 'org.apache.cxf:cxf-rt-rs-client:3.0.0-milestone1'
 }
 
+jar {
+    manifest {
+        attributes(
+                'Automatic-Module-Name' : 'org.iot.dsa.pi'
+        )
+    }
+}
 
 applicationDistribution.from(new File(project.projectDir, "/dslink.json"))
 
@@ -38,5 +44,5 @@ run {
 }
 
 wrapper {
-    gradleVersion = '4.10.2'
+    gradleVersion = '5.4.1'
 }

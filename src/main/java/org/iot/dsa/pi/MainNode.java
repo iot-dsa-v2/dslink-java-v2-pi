@@ -36,8 +36,7 @@ public class MainNode extends DSMainNode {
     	String addr = parameters.getString("Address");
     	String user = parameters.getString("Username");
     	String pass = parameters.getString("Password");
-    	WebClientProxy clientProxy = new WebClientProxy(addr, user, pass);
-    	WebApiNode n = new WebApiNode(addr, clientProxy, true);
+    	WebApiNode n = new WebApiNode(addr, user, pass);
     	put(name, n);
     }
 }
