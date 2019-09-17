@@ -5,7 +5,10 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import okhttp3.Response;
 import org.apache.commons.lang3.StringUtils;
+import org.iot.dsa.dslink.Action.ResultsType;
+import org.iot.dsa.dslink.ActionResults;
 import org.iot.dsa.dslink.restadapter.CredentialProvider;
 import org.iot.dsa.dslink.restadapter.Util.AUTH_SCHEME;
 import org.iot.dsa.node.DSBool;
@@ -14,31 +17,26 @@ import org.iot.dsa.node.DSIObject;
 import org.iot.dsa.node.DSIValue;
 import org.iot.dsa.node.DSInfo;
 import org.iot.dsa.node.DSList;
+import org.iot.dsa.node.DSLong;
 import org.iot.dsa.node.DSMap;
 import org.iot.dsa.node.DSMap.Entry;
 import org.iot.dsa.node.DSNode;
 import org.iot.dsa.node.DSString;
-import org.iot.dsa.node.DSValueType;
-import org.iot.dsa.node.action.ActionInvocation;
-import org.iot.dsa.node.action.ActionResult;
-import org.iot.dsa.node.action.ActionSpec;
-import org.iot.dsa.node.action.ActionSpec.ResultType;
-import org.iot.dsa.node.action.ActionValues;
 import org.iot.dsa.node.action.DSAction;
-import org.iot.dsa.node.action.DSActionValues;
+import org.iot.dsa.node.action.DSIAction;
+import org.iot.dsa.node.action.DSIActionRequest;
 import org.iot.dsa.pi.WebApiMethod.UrlParameter;
 import org.iot.dsa.util.DSException;
-import okhttp3.Response;
 
 public class WebApiNode extends DSNode implements CredentialProvider {
 
+    private static DSAction getUrlAction = makeGetUrlAction();
     private String address;
-    private String username;
-    private String password;
     private WebClientProxy clientProxy;
     private Boolean isRoot = null;
     private boolean newlyCreated;
-    private static DSAction getUrlAction = makeGetUrlAction();
+    private String password;
+    private String username;
 
     public WebApiNode() {
         this.newlyCreated = false;
@@ -49,7 +47,7 @@ public class WebApiNode extends DSNode implements CredentialProvider {
         this.username = username;
         this.password = password;
     }
-    
+
     public WebApiNode(String address, WebClientProxy clientProxy) {
         this(address, clientProxy, false);
     }
@@ -67,18 +65,6 @@ public class WebApiNode extends DSNode implements CredentialProvider {
         password = parameters.getString("Password");
         init(true);
     }
-    
-    public static String getBodyFromResponse(Response resp) throws IOException {
-        try {
-            return resp.body().string();
-        } catch (IOException e) {
-            throw e;
-        } finally {
-            if (resp != null) { 
-                resp.close();
-            }
-        }
-    }
 
     public void get(boolean shouldExpand) {
         Response r = getClientProxy().invoke("GET", address, new DSMap(), null);
@@ -91,8 +77,50 @@ public class WebApiNode extends DSNode implements CredentialProvider {
         }
     }
 
+    @Override
+    public AUTH_SCHEME getAuthScheme() {
+        return AUTH_SCHEME.BASIC_USR_PASS;
+    }
+
+    public static String getBodyFromResponse(Response resp) throws IOException {
+        try {
+            return resp.body().string();
+        } catch (IOException e) {
+            throw e;
+        } finally {
+            if (resp != null) {
+                resp.close();
+            }
+        }
+    }
+
+    @Override
+    public String getClientId() {
+        return null;
+    }
+
     public WebClientProxy getClientProxy() {
         return clientProxy;
+    }
+
+    @Override
+    public String getClientSecret() {
+        return null;
+    }
+
+    @Override
+    public String getPassword() {
+        return password;
+    }
+
+    @Override
+    public String getTokenURL() {
+        return null;
+    }
+
+    @Override
+    public String getUsername() {
+        return username;
     }
 
     public void setAddress(String address, boolean shouldExpand) {
@@ -198,8 +226,8 @@ public class WebApiNode extends DSNode implements CredentialProvider {
         n.put("Manually Added", DSBool.TRUE).setReadOnly(true).setPrivate(true);
     }
 
-    private ActionResult invokeMethod(WebApiMethod method, final DSAction action,
-                                      DSMap parameters) {
+    private ActionResults invokeMethod(WebApiMethod method, final DSIActionRequest req) {
+        DSMap parameters = req.getParameters();
         if (getClientProxy() == null) {
             return null;
         }
@@ -207,45 +235,22 @@ public class WebApiNode extends DSNode implements CredentialProvider {
         if (method.getBodyParameterName() != null) {
             body = parameters.get(StringUtils.capitalize(method.getBodyParameterName())).toString();
         }
-        
+
         Set<String> nullkeys = new HashSet<String>();
-        for (Entry entry: parameters) {
+        for (Entry entry : parameters) {
             if (entry.getValue().isString() && entry.getValue().toString().isEmpty()) {
                 nullkeys.add(entry.getKey());
             }
         }
-        for (String key: nullkeys) {
+        for (String key : nullkeys) {
             parameters.remove(key);
         }
-        
+
         Response r = getClientProxy().invoke(method.getType(), address, parameters, body);
         try {
             String s = getBodyFromResponse(r);
             final List<DSIValue> values = Arrays.asList(DSString.valueOf(s));
-            return new ActionValues() {
-
-                @Override
-                public ActionSpec getAction() {
-                    return action;
-                }
-
-                public int getColumnCount() {
-                    return values.size();
-                }
-
-                public void getMetadata(int col, DSMap bucket) {
-                    action.getColumnMetadata(col, bucket);
-                }
-
-                @Override
-                public DSIValue getValue(int col) {
-                    return values.get(col);
-                }
-
-                @Override
-                public void onClose() {
-                }
-            };
+            return DSIAction.toResults(req, DSString.valueOf(s));
         } catch (IOException e) {
             warn("", e);
             DSException.throwRuntime(e);
@@ -254,23 +259,23 @@ public class WebApiNode extends DSNode implements CredentialProvider {
     }
 
     private void makeAddAddressAction() {
-        DSAction act = new DSAction.Parameterless() {
+        DSAction act = new DSAction() {
             @Override
-            public ActionResult invoke(DSInfo target, ActionInvocation invocation) {
-                ((WebApiNode) target.get()).addAddress(invocation.getParameters());
+            public ActionResults invoke(DSIActionRequest req) {
+                ((WebApiNode) req.getTarget()).addAddress(req.getParameters());
                 return null;
             }
         };
-        act.addParameter("Name", DSValueType.STRING, null);
+        act.addParameter("Name", DSString.NULL, null);
         act.addDefaultParameter("Address", DSString.valueOf(address), null);
         put("Add Address", act);
     }
 
     private DSAction makeEditAction() {
-        DSAction act = new DSAction.Parameterless() {
+        DSAction act = new DSAction() {
             @Override
-            public ActionResult invoke(DSInfo target, ActionInvocation invocation) {
-                ((WebApiNode) target.get()).edit(invocation.getParameters());
+            public ActionResults invoke(DSIActionRequest req) {
+                ((WebApiNode) req.getTarget()).edit(req.getParameters());
                 return null;
             }
         };
@@ -280,27 +285,27 @@ public class WebApiNode extends DSNode implements CredentialProvider {
         return act;
     }
 
-    private DSAction makeRefreshAction() {
-        DSAction act = new DSAction.Parameterless() {
+    private static DSAction makeGetUrlAction() {
+        DSAction act = new DSAction() {
             @Override
-            public ActionResult invoke(DSInfo target, ActionInvocation invocation) {
-                ((WebApiNode) target.get()).init(true);
+            public ActionResults invoke(DSIActionRequest req) {
+                String url = ((WebApiNode) req.getTarget()).address;
+                return makeResults(req, DSString.valueOf(url));
+            }
+        };
+        act.setResultsType(ResultsType.VALUES);
+        act.addColumnMetadata("URL", DSString.NULL);
+        return act;
+    }
+
+    private DSAction makeRefreshAction() {
+        DSAction act = new DSAction() {
+            @Override
+            public ActionResults invoke(DSIActionRequest req) {
+                ((WebApiNode) req.getTarget()).init(true);
                 return null;
             }
         };
-        return act;
-    }
-    
-    private static DSAction makeGetUrlAction() {
-        DSAction act = new DSAction.Parameterless() {
-            @Override
-            public ActionResult invoke(DSInfo target, ActionInvocation invocation) {
-                String url = ((WebApiNode) target.get()).address;
-                return new DSActionValues(getUrlAction).addResult(DSString.valueOf(url));
-            }
-        };
-        act.setResultType(ResultType.VALUES);
-        act.addColumnMetadata("URL", DSValueType.STRING);
         return act;
     }
 
@@ -336,32 +341,32 @@ public class WebApiNode extends DSNode implements CredentialProvider {
         }
         List<WebApiMethod> methods = WebApiMethod.find(getClientProxy().removeBase(address));
         for (final WebApiMethod method : methods) {
-            DSAction act = new DSAction.Parameterless() {
+            DSAction act = new DSAction() {
                 @Override
-                public ActionResult invoke(DSInfo target, ActionInvocation invocation) {
-                    return ((WebApiNode) target.get())
-                            .invokeMethod(method, this, invocation.getParameters());
+                public ActionResults invoke(DSIActionRequest req) {
+                    return ((WebApiNode) req.getTarget()).invokeMethod(method, req);
                 }
             };
             for (UrlParameter param : method.getUrlParameters()) {
                 Class<?> typeclass = param.getType();
-                DSValueType type;
+                DSElement type;
                 if (typeclass.equals(Boolean.class)) {
-                    type = DSValueType.BOOL;
+                    type = DSBool.NULL;
                 } else if (typeclass.equals(Integer.class)) {
-                    type = DSValueType.NUMBER;
+                    type = DSLong.NULL;
                 } else {
-                    type = DSValueType.STRING;
+                    type = DSString.NULL;
                 }
-                act.addParameter(StringUtils.capitalize(param.getName()), type, param.getDescription());
+                act.addParameter(StringUtils.capitalize(param.getName()), type,
+                                 param.getDescription());
             }
             if (method.getBodyParameterName() != null) {
                 act.addDefaultParameter(StringUtils.capitalize(method.getBodyParameterName()),
                                         DSString.EMPTY, method.getBodyParameterDescription())
                    .setEditor("textarea");
             }
-            act.setResultType(ResultType.VALUES);
-            act.addColumnMetadata("Result", DSValueType.STRING).setEditor("textarea");
+            act.setResultsType(ResultsType.VALUES);
+            act.addColumnMetadata("Result", DSString.NULL).setEditor("textarea");
             put(method.getName(), act).setTransient(true);
         }
     }
@@ -419,35 +424,5 @@ public class WebApiNode extends DSNode implements CredentialProvider {
                 oldNodesToRemove.remove(key);
             }
         }
-    }
-    
-    @Override
-    public String getUsername() {
-        return username;
-    }
-    
-    @Override
-    public String getTokenURL() {
-        return null;
-    }
-    
-    @Override
-    public String getPassword() {
-        return password;
-    }
-    
-    @Override
-    public String getClientSecret() {
-        return null;
-    }
-    
-    @Override
-    public String getClientId() {
-        return null;
-    }
-    
-    @Override
-    public AUTH_SCHEME getAuthScheme() {
-        return AUTH_SCHEME.BASIC_USR_PASS;
     }
 }
