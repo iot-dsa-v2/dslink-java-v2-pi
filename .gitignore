@@ -1,25 +1,30 @@
+# Tooling
+**/.classpath
+**/.idea
+**/.metadata
+**/.project
+**/.settings
+**/eclipseBin
+
+# Build artifacts
+**.class
+**.iml
+**/.gradle
+**/build
+**/out
+**/libJar
+**/target
+
 # Misc
-.DS_Store
+**.bak
+**.old
+**.log
+**/.DS_Store
 
-# Gradle
-.gradle
-build
-
-# Project files
-*.iml
-.idea
-nodes.json*
-.classpath
-.key
-.nodes.json
-.nodes.json.bak
-.project
-.settings
-bin
-.gradle/
-.idea/
-*.log
-build/
-out/
-/src/main/java/unused
-**.jks
+# Runtime files
+**/.key
+**/db
+**/dslink.jks
+**/nodes.json
+**/nodes*.zip
+**/*.log.*.zip

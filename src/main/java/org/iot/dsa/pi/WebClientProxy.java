@@ -3,24 +3,22 @@ package org.iot.dsa.pi;
 import org.iot.dsa.dslink.restadapter.CredentialProvider;
 
 public class WebClientProxy extends org.iot.dsa.dslink.restadapter.WebClientProxy {
-	
+
     String base;
-	
-	WebClientProxy(String base, CredentialProvider credentials) {
-	    super(credentials);
-	    this.base = base;
-	}
-	
-	public String removeBase(String address) {
-	    if (address.startsWith(base)) {
-	        return address.substring(base.length());
-	    } else {
-	        return address;
-	    }
-	}
-	
-	
-	
+
+    WebClientProxy(String base, CredentialProvider credentials) {
+        super(credentials);
+        this.base = base;
+    }
+
+    public String removeBase(String address) {
+        if (address.startsWith(base)) {
+            return address.substring(base.length());
+        } else {
+            return address;
+        }
+    }
+
 //	public Response get(String address, DSMap urlParameters) {
 //		WebClient client = prepareWebClient(address, urlParameters);
 //		Response r = client.get();

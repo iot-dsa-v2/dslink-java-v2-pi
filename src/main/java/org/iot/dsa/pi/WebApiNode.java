@@ -1,20 +1,21 @@
 package org.iot.dsa.pi;
 
 import java.io.IOException;
-import java.util.Arrays;
+import java.io.Reader;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import okhttp3.Response;
+import okhttp3.ResponseBody;
 import org.apache.commons.lang3.StringUtils;
 import org.iot.dsa.dslink.Action.ResultsType;
 import org.iot.dsa.dslink.ActionResults;
 import org.iot.dsa.dslink.restadapter.CredentialProvider;
 import org.iot.dsa.dslink.restadapter.Util.AUTH_SCHEME;
+import org.iot.dsa.io.json.Json;
 import org.iot.dsa.node.DSBool;
 import org.iot.dsa.node.DSElement;
 import org.iot.dsa.node.DSIObject;
-import org.iot.dsa.node.DSIValue;
 import org.iot.dsa.node.DSInfo;
 import org.iot.dsa.node.DSList;
 import org.iot.dsa.node.DSLong;
@@ -23,10 +24,8 @@ import org.iot.dsa.node.DSMap.Entry;
 import org.iot.dsa.node.DSNode;
 import org.iot.dsa.node.DSString;
 import org.iot.dsa.node.action.DSAction;
-import org.iot.dsa.node.action.DSIAction;
 import org.iot.dsa.node.action.DSIActionRequest;
 import org.iot.dsa.pi.WebApiMethod.UrlParameter;
-import org.iot.dsa.util.DSException;
 
 public class WebApiNode extends DSNode implements CredentialProvider {
 
@@ -67,14 +66,37 @@ public class WebApiNode extends DSNode implements CredentialProvider {
     }
 
     public void get(boolean shouldExpand) {
-        Response r = getClientProxy().invoke("GET", address, new DSMap(), null);
+        Response resp = null;
         try {
-            String s = getBodyFromResponse(r);
-            DSMap m = Util.parseJsonMap(s);
-            update(m, shouldExpand);
+            resp = getClientProxy().invoke("GET", address, new DSMap(), null);
+            if (resp == null) {
+                warn("Unreachable: " + address);
+                return;
+            }
+            ResponseBody body = resp.body();
+            if (body != null) {
+                Reader reader = body.charStream();
+                if (reader != null) {
+                    DSElement e = Json.read(body.charStream(), true);
+                    if (e.isMap()) {
+                        update(e.toMap(), shouldExpand);
+                    }
+                }
+            }
         } catch (Exception e) {
-            warn("", e);
+            warn(e);
+        } finally {
+            try {
+                if (resp != null) {
+                    resp.close();
+                }
+            } catch (Exception ignore) {
+            }
         }
+    }
+
+    public String getAddress() {
+        return address;
     }
 
     @Override
@@ -83,8 +105,15 @@ public class WebApiNode extends DSNode implements CredentialProvider {
     }
 
     public static String getBodyFromResponse(Response resp) throws IOException {
+        if (resp == null) {
+            return null;
+        }
         try {
-            return resp.body().string();
+            ResponseBody body = resp.body();
+            if (body != null) {
+                return body.string();
+            }
+            return null;
         } catch (IOException e) {
             throw e;
         } finally {
@@ -150,22 +179,23 @@ public class WebApiNode extends DSNode implements CredentialProvider {
                 }
             }
         }
-        for (Entry e : propMap) {
+        Entry e = propMap.firstEntry();
+        while (e != null) {
+            propMap.removeFirst();
             String key = e.getKey();
             DSElement value = e.getValue();
             if (key.equals("Items") && value.isList()) {
-                DSList items = value.toList();
-                DSList remaining = updateItems(items, toRemove, shouldExpand);
+                DSList remaining = updateItems(value.toList(), toRemove, shouldExpand);
                 if (!remaining.isEmpty()) {
                     put(key, remaining).setReadOnly(true);
                 }
             } else if (key.equals("Links") && value.isMap()) {
-                DSMap links = value.toMap();
-                updateLinks(links, toRemove, shouldExpand);
+                updateLinks(value.toMap(), toRemove, shouldExpand);
             } else {
-                put(key, value.copy()).setReadOnly(true);
+                put(key, value).setReadOnly(true);
                 toRemove.remove(key);
             }
+            e = propMap.firstEntry();
         }
         if (address.endsWith("/search/sources") || address.endsWith("/search/sources/")) {
             String crawlAddr = address.endsWith("/") ? address + "crawl" : address + "/crawl";
@@ -197,7 +227,9 @@ public class WebApiNode extends DSNode implements CredentialProvider {
             put("Username", DSString.valueOf(username)).setReadOnly(true).setPrivate(true);
             put("Password", DSString.valueOf(password)).setReadOnly(true).setPrivate(true);
         }
-        get(shouldExpand);
+        if (isRunning()) {
+            get(shouldExpand);
+        }
     }
 
     @Override
@@ -226,36 +258,14 @@ public class WebApiNode extends DSNode implements CredentialProvider {
         n.put("Manually Added", DSBool.TRUE).setReadOnly(true).setPrivate(true);
     }
 
-    private ActionResults invokeMethod(WebApiMethod method, final DSIActionRequest req) {
-        DSMap parameters = req.getParameters();
+    private ActionResults invokeMethod(final WebApiMethod method, final DSIActionRequest req) {
         if (getClientProxy() == null) {
             return null;
         }
-        Object body = null;
-        if (method.getBodyParameterName() != null) {
-            body = parameters.get(StringUtils.capitalize(method.getBodyParameterName())).toString();
+        if (method.isStream()) {
+            return new InvokeStreamResults(this, method, req);
         }
-
-        Set<String> nullkeys = new HashSet<String>();
-        for (Entry entry : parameters) {
-            if (entry.getValue().isString() && entry.getValue().toString().isEmpty()) {
-                nullkeys.add(entry.getKey());
-            }
-        }
-        for (String key : nullkeys) {
-            parameters.remove(key);
-        }
-
-        Response r = getClientProxy().invoke(method.getType(), address, parameters, body);
-        try {
-            String s = getBodyFromResponse(r);
-            final List<DSIValue> values = Arrays.asList(DSString.valueOf(s));
-            return DSIAction.toResults(req, DSString.valueOf(s));
-        } catch (IOException e) {
-            warn("", e);
-            DSException.throwRuntime(e);
-            return null;
-        }
+        return new InvokeResults(this, method, req);
     }
 
     private void makeAddAddressAction() {
@@ -365,7 +375,11 @@ public class WebApiNode extends DSNode implements CredentialProvider {
                                         DSString.EMPTY, method.getBodyParameterDescription())
                    .setEditor("textarea");
             }
-            act.setResultsType(ResultsType.VALUES);
+            if (method.isStream()) {
+                act.setResultsType(ResultsType.STREAM);
+            } else {
+                act.setResultsType(ResultsType.VALUES);
+            }
             act.addColumnMetadata("Result", DSString.NULL).setEditor("textarea");
             put(method.getName(), act).setTransient(true);
         }
@@ -425,4 +439,6 @@ public class WebApiNode extends DSNode implements CredentialProvider {
             }
         }
     }
+
+
 }
