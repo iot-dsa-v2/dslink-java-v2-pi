@@ -1,7 +1,5 @@
 package org.iot.dsa.pi;
 
-import java.util.HashSet;
-import java.util.Set;
 import okhttp3.Response;
 import org.apache.commons.lang3.StringUtils;
 import org.iot.dsa.DSRuntime;
@@ -11,7 +9,9 @@ import org.iot.dsa.node.DSList;
 import org.iot.dsa.node.DSMap;
 import org.iot.dsa.node.DSMap.Entry;
 import org.iot.dsa.node.action.DSIActionRequest;
-import org.iot.dsa.util.DSException;
+
+import java.util.HashSet;
+import java.util.Set;
 
 public class InvokeResults implements AsyncActionResults, Runnable {
 
@@ -42,10 +42,14 @@ public class InvokeResults implements AsyncActionResults, Runnable {
         try {
             bucket.add(WebApiNode.getBodyFromResponse(res));
         } catch (Exception x) {
-            DSException.throwRuntime(x);
+            node.debug(x);
+            req.close(x);
+        } finally {
+            res = null;
+            if (req != null) {
+                req.close();
+            }
         }
-        res = null;
-        req.close();
     }
 
     @Override
@@ -58,13 +62,31 @@ public class InvokeResults implements AsyncActionResults, Runnable {
         return res != null;
     }
 
+    @Override
+    public void onClose() {
+        try {
+            if (res != null) {
+                res.close();
+            }
+        } catch (Exception ignore) {
+        }
+        try {
+            if (req != null) {
+                req.close();
+            }
+        } catch (Exception ignore) {
+        }
+        res = null;
+        req = null;
+    }
+
     public void run() {
         try {
             DSMap parameters = req.getParameters();
             Object body = null;
             if (method.getBodyParameterName() != null) {
                 body = parameters.get(StringUtils.capitalize(method.getBodyParameterName()))
-                                 .toString();
+                        .toString();
             }
             Set<String> nullkeys = new HashSet<String>();
             for (Entry entry : parameters) {
@@ -79,7 +101,9 @@ public class InvokeResults implements AsyncActionResults, Runnable {
                     method.getType(), node.getAddress(), parameters, body);
             req.sendResults();
         } catch (Exception x) {
+            node.error(x);
             req.close(x);
         }
     }
+
 }

@@ -1,13 +1,9 @@
 package org.iot.dsa.pi;
 
-import java.io.IOException;
-import java.io.Reader;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 import org.apache.commons.lang3.StringUtils;
+import org.iot.dsa.DSRuntime;
 import org.iot.dsa.dslink.Action.ResultsType;
 import org.iot.dsa.dslink.ActionResults;
 import org.iot.dsa.dslink.restadapter.CredentialProvider;
@@ -27,6 +23,12 @@ import org.iot.dsa.node.action.DSAction;
 import org.iot.dsa.node.action.DSIActionRequest;
 import org.iot.dsa.pi.WebApiMethod.UrlParameter;
 
+import java.io.IOException;
+import java.io.Reader;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
 public class WebApiNode extends DSNode implements CredentialProvider {
 
     private static DSAction getUrlAction = makeGetUrlAction();
@@ -36,6 +38,7 @@ public class WebApiNode extends DSNode implements CredentialProvider {
     private boolean newlyCreated;
     private String password;
     private String username;
+    private DSRuntime.Timer pollTimer;
 
     public WebApiNode() {
         this.newlyCreated = false;
@@ -250,6 +253,21 @@ public class WebApiNode extends DSNode implements CredentialProvider {
         restoreClientProxy();
     }
 
+    @Override
+    protected void onSubscribed() {
+        if (pollTimer == null) {
+            pollTimer = DSRuntime.run(() -> get(false), System.currentTimeMillis(), 5000);
+        }
+    }
+
+    @Override
+    protected void onUnsubscribed() {
+        if (pollTimer != null) {
+            pollTimer.cancel();
+            pollTimer = null;
+        }
+    }
+
     private void addAddress(DSMap parameters) {
         String name = parameters.getString("Name");
         String addr = parameters.getString("Address");
@@ -368,12 +386,12 @@ public class WebApiNode extends DSNode implements CredentialProvider {
                     type = DSString.NULL;
                 }
                 act.addParameter(StringUtils.capitalize(param.getName()), type,
-                                 param.getDescription());
+                        param.getDescription());
             }
             if (method.getBodyParameterName() != null) {
                 act.addDefaultParameter(StringUtils.capitalize(method.getBodyParameterName()),
-                                        DSString.EMPTY, method.getBodyParameterDescription())
-                   .setEditor("textarea");
+                        DSString.EMPTY, method.getBodyParameterDescription())
+                        .setEditor("textarea");
             }
             if (method.isStream()) {
                 act.setResultsType(ResultsType.STREAM);

@@ -1,8 +1,5 @@
 package org.iot.dsa.pi;
 
-import java.io.Reader;
-import java.util.HashSet;
-import java.util.Set;
 import okhttp3.Response;
 import org.apache.commons.lang3.StringUtils;
 import org.iot.dsa.DSRuntime;
@@ -15,19 +12,18 @@ import org.iot.dsa.node.DSMap;
 import org.iot.dsa.node.DSMap.Entry;
 import org.iot.dsa.node.action.DSIActionRequest;
 
-public class InvokeStreamResults implements AsyncActionResults, Runnable {
+import java.io.Reader;
+import java.util.HashSet;
+import java.util.Set;
 
-    private static int STATE_RUNNING = 0;
-    private static int STATE_RESULTS = 1;
-    private static int STATE_CLOSING = 2;
-    private static int STATE_CLOSED = 3;
+public class InvokeStreamResults implements AsyncActionResults, Runnable {
 
     private Reader in;
     private JsonReader json;
     private WebApiMethod method;
     private WebApiNode node;
     private DSIActionRequest req;
-    private int state = STATE_RUNNING;
+    private Response res;
 
     public InvokeStreamResults(WebApiNode node, WebApiMethod method, DSIActionRequest req) {
         this.node = node;
@@ -52,7 +48,7 @@ public class InvokeStreamResults implements AsyncActionResults, Runnable {
             bucket.add(json.getMap());
         } catch (Exception x) {
             node.debug(x);
-            close();
+            req.close(x);
         }
     }
 
@@ -63,20 +59,40 @@ public class InvokeStreamResults implements AsyncActionResults, Runnable {
 
     @Override
     public boolean next() {
-        if ((state == STATE_RUNNING) || (state == STATE_CLOSED)) {
-            return false;
+        try {
+            if (json.next() == Token.BEGIN_MAP) {
+                return true;
+            }
+        } catch (Exception x) {
+            node.debug(x);
+            req.close(x);
         }
-        if (state == STATE_RESULTS) {
+        return false;
+    }
+
+    @Override
+    public void onClose() {
+        if (json != null) {
             try {
-                if (json.next() == Token.BEGIN_MAP) {
-                    return true;
-                }
-            } catch (Exception x) {
-                node.debug(x);
+                json.close();
+            } catch (Exception ignore) {
             }
         }
-        close();
-        return false;
+        if (in != null) {
+            try {
+                in.close();
+            } catch (Exception ignore) {
+            }
+        }
+        if (res != null) {
+            try {
+                res.close();
+            } catch (Exception ignore) {
+            }
+        }
+        in = null;
+        json = null;
+        req = null;
     }
 
     public void run() {
@@ -85,7 +101,7 @@ public class InvokeStreamResults implements AsyncActionResults, Runnable {
             Object body = null;
             if (method.getBodyParameterName() != null) {
                 body = parameters.get(StringUtils.capitalize(method.getBodyParameterName()))
-                                 .toString();
+                        .toString();
             }
             Set<String> nullkeys = new HashSet<String>();
             for (Entry entry : parameters) {
@@ -96,57 +112,22 @@ public class InvokeStreamResults implements AsyncActionResults, Runnable {
             for (String key : nullkeys) {
                 parameters.remove(key);
             }
-            Response res = node.getClientProxy().invoke(
+            res = node.getClientProxy().invoke(
                     method.getType(), node.getAddress(), parameters, body);
             in = res.body().charStream();
             json = new JsonReader(in);
             readToItems();
-            state = STATE_RESULTS;
             req.sendResults();
         } catch (Exception x) {
             node.error(x);
-            state = STATE_CLOSING;
-        }
-    }
-
-    private void close() {
-        if (state == STATE_CLOSED) {
-            return;
-        }
-        state = STATE_CLOSED;
-        try {
-            if (req != null) {
-                req.close();
-            }
-            if (json != null) {
-                if (json.last() == Token.END_INPUT) {
-                    json.close();
-                    in.close();
-                }
-            } else if (in != null) {
-                //drain the input stream
-                if (in.ready()) {
-                    int ch = in.read();
-                    while ((ch >= 0) && in.ready()) {
-                        ch = in.read();
-                    }
-                    in.close();
-                }
-            }
-        } catch (Exception x) {
-            node.debug(x);
-        } finally {
-            in = null;
-            json = null;
-            req = null;
+            req.close(x);
         }
     }
 
     private void readToItems() {
         Token token = json.next();
         if (token != Token.BEGIN_MAP) {
-            close();
-            return;
+            throw new IllegalStateException("Invalid json");
         }
         token = json.next();
         String key;
@@ -167,6 +148,5 @@ public class InvokeStreamResults implements AsyncActionResults, Runnable {
             }
             token = json.next();
         }
-        state = STATE_CLOSING;
     }
 }
