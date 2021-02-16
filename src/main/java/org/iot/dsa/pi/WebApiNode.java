@@ -3,7 +3,6 @@ package org.iot.dsa.pi;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 import org.apache.commons.lang3.StringUtils;
-import org.iot.dsa.DSRuntime;
 import org.iot.dsa.dslink.Action.ResultsType;
 import org.iot.dsa.dslink.ActionResults;
 import org.iot.dsa.dslink.restadapter.CredentialProvider;
@@ -38,7 +37,6 @@ public class WebApiNode extends DSNode implements CredentialProvider {
     private boolean newlyCreated;
     private String password;
     private String username;
-    private DSRuntime.Timer pollTimer;
 
     public WebApiNode() {
         this.newlyCreated = false;
@@ -69,6 +67,9 @@ public class WebApiNode extends DSNode implements CredentialProvider {
     }
 
     public void get(boolean shouldExpand) {
+        if (address == null) {
+            return;
+        }
         Response resp = null;
         try {
             resp = getClientProxy().invoke("GET", address, new DSMap(), null);
@@ -76,13 +77,14 @@ public class WebApiNode extends DSNode implements CredentialProvider {
                 warn("Unreachable: " + address);
                 return;
             }
-            ResponseBody body = resp.body();
-            if (body != null) {
-                Reader reader = body.charStream();
-                if (reader != null) {
-                    DSElement e = Json.read(body.charStream(), true);
-                    if (e.isMap()) {
-                        update(e.toMap(), shouldExpand);
+            try (ResponseBody body = resp.body()) {
+                if (body != null) {
+                    Reader reader = body.charStream();
+                    if (reader != null) {
+                        DSElement e = Json.read(body.charStream(), true);
+                        if (e.isMap()) {
+                            update(e.toMap(), shouldExpand);
+                        }
                     }
                 }
             }
@@ -111,8 +113,7 @@ public class WebApiNode extends DSNode implements CredentialProvider {
         if (resp == null) {
             return null;
         }
-        try {
-            ResponseBody body = resp.body();
+        try (ResponseBody body = resp.body()) {
             if (body != null) {
                 return body.string();
             }
@@ -120,8 +121,9 @@ public class WebApiNode extends DSNode implements CredentialProvider {
         } catch (IOException e) {
             throw e;
         } finally {
-            if (resp != null) {
+            try {
                 resp.close();
+            } catch (Exception ignore) {
             }
         }
     }
@@ -167,10 +169,17 @@ public class WebApiNode extends DSNode implements CredentialProvider {
     public void update(DSMap propMap, boolean shouldExpand) {
         Set<String> toRemove = new HashSet<String>();
         for (DSInfo info : this) {
-            if (!info.isAction()) {
-                String name = info.getName();
-                if (!(name.equals("Address") || name.equals("Username") || name
-                        .equals("Password"))) {
+            if (info.isAction()) {
+                continue;
+            }
+            String name = info.getName();
+            switch (name) {
+                case "Address":
+                case "Username":
+                case "Password":
+                case "Manually Added":
+                    break;
+                default:
                     if (info.isNode()) {
                         DSIObject ma = info.getNode().get("Manually Added");
                         if (!(ma instanceof DSBool && ((DSBool) ma).toBoolean())) {
@@ -179,7 +188,6 @@ public class WebApiNode extends DSNode implements CredentialProvider {
                     } else {
                         toRemove.add(name);
                     }
-                }
             }
         }
         Entry e = propMap.firstEntry();
@@ -254,17 +262,34 @@ public class WebApiNode extends DSNode implements CredentialProvider {
     }
 
     @Override
+    protected void onStopped() {
+        super.onStopped();
+        getClientProxy().unregisterPoll(this);
+    }
+
+    @Override
     protected void onSubscribed() {
-        if (pollTimer == null) {
-            pollTimer = DSRuntime.run(() -> get(false), System.currentTimeMillis(), 5000);
-        }
+        super.onSubscribed();
+        getClientProxy().registerPoll(this);
     }
 
     @Override
     protected void onUnsubscribed() {
-        if (pollTimer != null) {
-            pollTimer.cancel();
-            pollTimer = null;
+        super.onUnsubscribed();
+        getClientProxy().unregisterPoll(this);
+    }
+
+    void poll() {
+        if (!isRunning()) {
+            return;
+        }
+        DSInfo<?> info = getFirstInfo();
+        while (info != null) {
+            if (info.isValue() && !info.isPrivate()) {
+                get(false);
+                break;
+            }
+            info = info.next();
         }
     }
 
@@ -278,6 +303,9 @@ public class WebApiNode extends DSNode implements CredentialProvider {
 
     private ActionResults invokeMethod(final WebApiMethod method, final DSIActionRequest req) {
         if (getClientProxy() == null) {
+            return null;
+        }
+        if (address == null) {
             return null;
         }
         if (method.isStream()) {
@@ -355,7 +383,8 @@ public class WebApiNode extends DSNode implements CredentialProvider {
                 password = pass instanceof DSString ? ((DSString) pass).toString() : null;
             }
             if (clientProxy == null) {
-                clientProxy = new WebClientProxy(address, this);
+                clientProxy = new WebClientProxy(
+                        address, this, 30000, 30000);
             }
         } else if (clientProxy == null) {
             clientProxy = ((WebApiNode) getParent()).restoreClientProxy();
@@ -364,9 +393,6 @@ public class WebApiNode extends DSNode implements CredentialProvider {
     }
 
     private void setupExtraActions() {
-        if (address == null) {
-            return;
-        }
         List<WebApiMethod> methods = WebApiMethod.find(getClientProxy().removeBase(address));
         for (final WebApiMethod method : methods) {
             DSAction act = new DSAction() {

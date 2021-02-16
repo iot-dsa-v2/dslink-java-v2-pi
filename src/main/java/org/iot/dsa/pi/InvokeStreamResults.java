@@ -1,6 +1,7 @@
 package org.iot.dsa.pi;
 
 import okhttp3.Response;
+import okhttp3.ResponseBody;
 import org.apache.commons.lang3.StringUtils;
 import org.iot.dsa.DSRuntime;
 import org.iot.dsa.dslink.Action.ResultsType;
@@ -18,6 +19,7 @@ import java.util.Set;
 
 public class InvokeStreamResults implements AsyncActionResults, Runnable {
 
+    private ResponseBody body;
     private Reader in;
     private JsonReader json;
     private WebApiMethod method;
@@ -84,12 +86,19 @@ public class InvokeStreamResults implements AsyncActionResults, Runnable {
             } catch (Exception ignore) {
             }
         }
+        if (body != null) {
+            try {
+                body.close();
+            } catch (Exception ignore) {
+            }
+        }
         if (res != null) {
             try {
                 res.close();
             } catch (Exception ignore) {
             }
         }
+        body = null;
         in = null;
         json = null;
         req = null;
@@ -114,13 +123,18 @@ public class InvokeStreamResults implements AsyncActionResults, Runnable {
             }
             res = node.getClientProxy().invoke(
                     method.getType(), node.getAddress(), parameters, body);
-            in = res.body().charStream();
+            this.body = res.body();
+            in = this.body.charStream();
             json = new JsonReader(in);
             readToItems();
             req.sendResults();
         } catch (Exception x) {
-            node.error(x);
-            req.close(x);
+            DSIActionRequest r = req;
+            if (r != null) {
+                r.close(x);
+                node.error(x);
+            }
+            onClose();
         }
     }
 

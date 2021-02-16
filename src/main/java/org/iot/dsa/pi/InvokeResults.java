@@ -101,8 +101,12 @@ public class InvokeResults implements AsyncActionResults, Runnable {
                     method.getType(), node.getAddress(), parameters, body);
             req.sendResults();
         } catch (Exception x) {
-            node.error(x);
-            req.close(x);
+            DSIActionRequest r = req;
+            if (r != null) {
+                r.close(x);
+                node.error(x);
+            }
+            onClose();
         }
     }
 
